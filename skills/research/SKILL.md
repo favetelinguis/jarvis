@@ -14,7 +14,7 @@ A Research task moves: **Question** → (I approve the question) → **Investiga
 
 ## 1. Question
 
-If there is no task yet, create one in the goal I name (or ask which). Write the **question** section: a `prose` widget with the question in one sentence, and a `callout` for what the answer will be used for. Write the **context** section with a `glossary_term` per term and a `diagram` of anything I need to see to understand the question. Ask me what you need to know with a structured question tool when one is available. Then stop: the transition "approve question" is mine.
+If there is no task yet, create one in the goal I name (or ask which). Write the **question** section: a `prose` widget with the question in one sentence, and a `callout` for what the answer will be used for. Write the **context** section with a `glossary_term` per term and a `diagram` of anything I need to see to understand the question. Ask me what you need to know by the interview protocol below. Then stop: the transition "approve question" is mine.
 
 ## 2. Investigation
 
@@ -30,3 +30,13 @@ Show, do not tell:
 - **recommendation:** a `decision` with its reason and the alternatives rejected.
 
 Then move the task with `transition: "findings ready"` and tell me in two lines what you found and what I should look at first. When I comment on a part, answer or change exactly that widget.
+
+## Interview protocol
+
+Ask in plain chat, never through a harness's own question tool: these skills run in several harnesses, and pickers push toward canned answers.
+
+- Keep the open decisions as a tree. Each round, ask the whole frontier: every decision whose prerequisites are settled, and none that depends on an answer still open. Recompute it after my answers.
+- Format each question as `❓ **Q1** - **<title>**: <body>`, then `➡️ <your recommended answer>` alone on the next line. Word it so "yes" accepts the recommendation; I answer by number ("1 yes, 2 no, because..."). Number on across rounds, so a number always means one question. A question that asks for what I know or want, not for a decision, has no recommendation.
+- Facts are yours: read the board, the code, the README, and the docs before asking, and never ask what you can find out. Decisions are mine: never answer one yourself and never go on with a guess.
+- If I say an answer changes an earlier question, reopen that branch in the next round.
+- The interview is done when no open decision is left, not before. Then say what you understood in a few lines and wait for me to confirm we share it; do not act on it, write it down as settled, or move on until I do.

@@ -190,7 +190,7 @@ defmodule Jarvis.Integrations do
 
   # Per entry: is it in the configuration, add it, remove it. pi: package in settings.json;
   # Codex: marked blocks in config.toml; Copilot CLI: mcp-config.json and hooks in
-  # settings.json; skills: the nine workflows in ~/.agents/skills, shared by all agents.
+  # settings.json; skills: the ten workflows in ~/.agents/skills, shared by all agents.
   defp present?(:pi, :package) do
     with {:ok, json} <- read_json(pi_settings()) do
       entries = Enum.filter(json["packages"] || [], &(package_source(&1) == pi_package()))
@@ -306,7 +306,7 @@ defmodule Jarvis.Integrations do
     end)
   end
 
-  # The nine workflow skills, shared by all agents in ~/.agents/skills.
+  # The ten workflow skills, shared by all agents in ~/.agents/skills.
   defp remove(_agent, :skills) do
     for name <- skill_names(), File.exists?(Path.join(skill_dir(name), @marker)) do
       File.rm_rf!(skill_dir(name))

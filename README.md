@@ -53,7 +53,7 @@ On the **Settings** page, the **Integrations** section has one row per agent: wh
 | pi | An explicit extension selection from the package `pi/` in `~/.pi/agent/settings.json`: registers the shared MCP tools, reports presence, and supplies next-turn comments |
 | Codex | In `~/.codex/config.toml`, marked `# >>> jarvis` blocks: the board tools as an MCP server (`agent/jarvis-mcp.mjs`) and hooks for presence and comment delivery (`agent/jarvis-hook.mjs`). Also removes the old session-mirror hook |
 | Copilot CLI | `mcpServers.jarvis` in `~/.copilot/mcp-config.json`, and presence/comment hooks in `~/.copilot/settings.json` |
-| all three | The nine workflow skills in `skills/` copied to `~/.agents/skills/`, one copy for all agents |
+| all three | The ten workflow skills in `skills/` copied to `~/.agents/skills/`, one copy for all agents |
 
 All three agents need `node` for the shared MCP server (and the Codex/Copilot hooks). If the server is not at `http://localhost:4000`, it records the URL the panel was opened on. Re-click Install to bring the skills up to date after changing them in this repository. Codex may ask you to trust the new hooks.
 
@@ -74,6 +74,10 @@ A Feature task moves through **Requirements → Design → Implementation → Re
 3. `impl`, then `impl-review`: the reviewer moves the task to **Done** (or back to Implementation) and leaves its verdict as a comment.
 
 Research, PR review, and Learn tasks have their own skills and lifecycles (`research`, `pr-review`, `learn`).
+
+When an answer from the agent did not land, `eli5` re-explains its last output in plain words. It changes nothing.
+
+The interviewing skills (`specify`, `design`, `design-review`, `research`, `learn`) ask in plain chat in rounds: numbered questions, each with the agent's recommended answer, which you can answer by number. They never use a harness's own question tool.
 
 Several sessions in several worktrees can run at once. Each claims its own task, and the board shows which session works where.
 

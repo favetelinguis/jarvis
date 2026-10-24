@@ -35,7 +35,7 @@ Each `##` section of a goal and each bold label of a task below is a **section**
 - **Requirements:** one `requirement` card per requirement (`id` R1…, `pattern` ubiquitous/event/state/unwanted/optional, `trigger`, `system`, `response`). Cards, not bullets: I confirm each one, or question it on the card. When I have confirmed all of them I approve the requirements myself; you never move a task out of Requirements.
 - **Examples:** one `examples` table per rule that branches or has a limit; its rows are what I explore by picking values.
 - **Intent, Constraints, Assumptions, Out of scope, Open questions:** a short `prose` widget each, or a `callout` for a risk or a warning.
-- **Goal Scope:** `prose` with In/Out lists. **Glossary:** one `glossary_term` per term. **Decisions:** one `decision` per decision, with the alternatives rejected.
+- **Goal Scope:** `prose` with In/Out lists. **Glossary:** one `glossary_term` per term. **Decisions:** one `decision` per choice that spans tasks and passes this test: it is hard to reverse, would surprise a future reader, and was a real trade-off. Give the alternatives rejected.
 - Where a flow, a sequence, a state machine, or a structure is easier seen than read, add a `diagram` or an `architecture` widget next to the requirements it explains.
 
 ```markdown
@@ -102,12 +102,24 @@ Interview me as a requirements engineer. Start from the problem, not a solution.
 - **Scenarios:** walk the normal path, the alternatives, and the failures, from the user's or caller's side.
 - **Boundaries:** probe nothing, one, many, the maximum and one past it, duplicates, concurrent use, a restart midway, invalid or hostile input, missing permissions, and an external system that is down or slow.
 - **Qualities:** turn every quality word ("fast", "secure", "reliable", "simple") into a number with a unit, or drop it.
-- **Terms:** define each domain term as it appears and add it to the Glossary. Resolve synonyms to one term.
+- **Terms:** define each domain term as it appears and add it to the Glossary, checking it against the Glossary's existing terms and the code. Resolve synonyms to one term.
 - **Conflicts and assumptions:** point out where my statements conflict, and resolve them with me. State each assumption aloud and confirm it.
 
-Use a structured question tool when one is available: batch related questions (at most 4 per call) and recommend an option where you have a view. Prefer a few sharp questions per round over a long questionnaire. Keep going until nothing about what or why is left to guess. Then play the goal's intent and scope back to me in a few lines, and correct them, before you cut tasks.
+Run the elicitation as an interview, by the protocol below: the probes above are branches of the tree. Keep going until nothing about what or why is left to guess. Then play the goal's intent and scope back to me in a few lines, and correct them, before you cut tasks.
 
 Do not ask about modules, files, types, or signatures. When a design question surfaces, record it under the task's Open questions, marked (design), and move on.
+
+## Interview protocol
+
+Ask in plain chat, never through a harness's own question tool: these skills run in several harnesses, and pickers push toward canned answers.
+
+- Keep the open decisions as a tree. Each round, ask the whole frontier: every decision whose prerequisites are settled, and none that depends on an answer still open. Recompute it after my answers.
+- Format each question as `❓ **Q1** - **<title>**: <body>`, then `➡️ <your recommended answer>` alone on the next line. Word it so "yes" accepts the recommendation; I answer by number ("1 yes, 2 no, because..."). Number on across rounds, so a number always means one question.
+- Facts are yours: read the board, the code, the README, and the docs before asking, and never ask what you can find out. Decisions are mine: never answer one yourself and never go on with a guess.
+- If I say an answer changes an earlier question, reopen that branch in the next round.
+- The interview is done when no open decision is left, not before. Then say what you understood in a few lines and wait for me to confirm we share it; do not act on it, write it down as settled, or move on until I do.
+- Challenge terms: when I use a term that conflicts with a Glossary entry or with what the code does, say so at once and ask which is right; when I am vague, propose one precise term; test a fuzzy boundary with a concrete edge-case scenario. When I state how something works, check the code and surface any contradiction.
+- Write each term as a `glossary_term` widget the moment I agree to it, not at the end; the closing confirmation covers the rest.
 
 ## 3. Cut the goal into tasks
 

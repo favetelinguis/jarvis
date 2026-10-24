@@ -211,7 +211,7 @@ defmodule Jarvis.IntegrationsTest do
     skill = Path.join(home, ".agents/skills/design/SKILL.md")
     Integrations.install(:codex)
     assert File.exists?(skill)
-    assert length(Path.wildcard(Path.join(home, ".agents/skills/*/SKILL.md"))) == 9
+    assert length(Path.wildcard(Path.join(home, ".agents/skills/*/SKILL.md"))) == 10
     refute File.read!(skill) |> String.contains?("$ARGUMENTS")
 
     assert %{state: :installed} = Integrations.install(:copilot)

@@ -14,7 +14,7 @@ A Learn task moves: **Topic** → (`explain`, yours) → **Explanation** → (`c
 
 ## 1. Topic
 
-Create the task if it does not exist, in the goal I name (or ask which). Ask what I already know and what I want to be able to do afterwards. Write **topic**: a `prose` widget with that goal, and a `glossary_term` for each term I will need, so I meet them before I need them. Then `transition: "explain"`.
+Create the task if it does not exist, in the goal I name (or ask which). Ask what I already know and what I want to be able to do afterwards, by the interview protocol below (two or three questions are enough). Write **topic**: a `prose` widget with that goal, and a `glossary_term` for each term I will need, so I meet them before I need them. Then `transition: "explain"`.
 
 ## 2. Explanation
 
@@ -30,3 +30,13 @@ When I comment on a part, answer there. Then `transition: "check understanding"`
 ## 3. Check
 
 Write **check**: a `quiz` widget in `gate` mode with `gates: "passed"` (I cannot pass until every question is answered correctly), or `feedback` mode when you only want to see where I am unclear. Ask about understanding, not recall of wording: predictions ("what happens if…"), choices with plausible wrong options, and one free-text question where I explain in my own words. Each option has an explanation that teaches, right or wrong. In `feedback` and `gate` mode you receive my answers; judge free-text answers with `jarvis_widgets` op `judge`. If my wrong answers show a gap, revise the explanation widget they point at. Moving the task to Done is mine.
+
+## Interview protocol
+
+Ask in plain chat, never through a harness's own question tool: these skills run in several harnesses, and pickers push toward canned answers.
+
+- Keep the open decisions as a tree. Each round, ask the whole frontier: every decision whose prerequisites are settled, and none that depends on an answer still open. Recompute it after my answers.
+- Format each question as `❓ **Q1** - **<title>**: <body>`, then `➡️ <your recommended answer>` alone on the next line. Word it so "yes" accepts the recommendation; I answer by number ("1 yes, 2 no, because..."). Number on across rounds, so a number always means one question. A question that asks for what I know or want, not for a decision, has no recommendation.
+- Facts are yours: read the board, the code, the README, and the docs before asking, and never ask what you can find out. Decisions are mine: never answer one yourself and never go on with a guess.
+- If I say an answer changes an earlier question, reopen that branch in the next round.
+- The interview is done when no open decision is left, not before. Then say what you understood in a few lines and wait for me to confirm we share it; do not act on it, write it down as settled, or move on until I do.

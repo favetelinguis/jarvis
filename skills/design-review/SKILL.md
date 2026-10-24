@@ -34,6 +34,16 @@ Report briefly, skipping any section with nothing to say except implementation b
 4. **Fit with the project:** parts placed where the project does not keep that kind of code; new files, modules, helpers, or dependencies where existing ones would do; tests outside the project's test layout or style; conventions in the project's instructions the sketch breaks.
 5. **Simplicity:** parts the requirements do not need, shallow wrappers and pass-throughs, interfaces that leak decisions or need a call order, errors pushed onto callers, states as flags, and anything hard to describe in one sentence. Suggest the simpler shape.
 6. **Sketch quality:** bodies that were written; major parts with no `SKETCH:` comment; comments too vague to implement from, or that omit an edge case or error the requirements name; detail that belongs to the implementer.
-7. **Next:** the 2 to 4 most valuable things to resolve before this task is ready, implementation blockers first, as concrete questions or edits. Ask the ones that need my decision with a structured question tool when one is available.
+7. **Next:** what to resolve before this task is ready, implementation blockers first, as concrete questions or edits. Put the ones that need my decision to me by the interview protocol below, until none is open.
 
 Be direct and prioritised; a long list of nits hides the real problems. Do not start fixing anything: I will decide and continue the design. When I say the design is approved, move the task with `jarvis_task_save` `transition: "approve design"`.
+
+## Interview protocol
+
+Ask in plain chat, never through a harness's own question tool: these skills run in several harnesses, and pickers push toward canned answers.
+
+- Keep the open decisions as a tree. Each round, ask the whole frontier: every decision whose prerequisites are settled, and none that depends on an answer still open. Recompute it after my answers.
+- Format each question as `❓ **Q1** - **<title>**: <body>`, then `➡️ <your recommended answer>` alone on the next line. Word it so "yes" accepts the recommendation; I answer by number ("1 yes, 2 no, because..."). Number on across rounds, so a number always means one question.
+- Facts are yours: read the board, the code, the README, and the docs before asking, and never ask what you can find out. Decisions are mine: never answer one yourself and never go on with a guess.
+- If I say an answer changes an earlier question, reopen that branch in the next round.
+- The interview is done when no open decision is left, not before. Then say what you understood in a few lines and wait for me to confirm we share it; do not act on it, write it down as settled, or move on until I do.

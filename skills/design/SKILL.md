@@ -62,13 +62,25 @@ The `SKETCH:` comments are scaffolding. /impl turns what a caller needs into a s
 Process:
 
 1. Decide placement first. For each part, choose the file and module the project's structure gives it, extending existing code before adding files, modules, or dependencies. Raise every new module, package, or dependency with me, with your recommendation, before sketching it. A close call defaults to existing code.
-2. Grill me until behavior, data, and interfaces are nailed down. Use a structured question tool when one is available: batch related questions (at most 4 per call) and recommend an option where you have a view. Do not ask what the task, the code, or the project's instructions already answer, and do not ask about other tasks.
+2. Grill me until behavior, data, and interfaces are nailed down, by the interview protocol below; the task's open (design) questions are its first round. Do not ask what the task, the code, or the project's instructions already answer, and do not ask about other tasks.
 3. Treat the requirements as my word. A test that needs behavior no requirement states means a requirement is missing: ask me, do not invent it. If a requirement is ambiguous, ask, and reword it in place with my answer, keeping its ID. If one is wrong, missing, or contradicts another, or the task turns out larger than one pull request, stop and propose the change: with my agreement, move a self-contained remainder into a new task (Requirements step) with the next free task number and its own requirements; anything larger goes back to /specify. Add a domain term the design needs to the Glossary.
 4. Keep it simple: the fewest new parts that meet the requirements, small interfaces that hide the work, no pass-throughs, no required call order, no speculative options. Name things with the Glossary's terms.
 5. Treat friction as a design flaw: a test that is hard to name or set up, a signature that is awkward, a comment that is hard to state simply, or a part that keeps needing another part's internals. Say so and redesign until tests, data, and functions agree.
-6. Keep the task current in Jarvis: its Sketch section (`prose` widgets) listing every file the sketch adds or changes, its Tests section mapping each requirement to its test names (`R1: <file> > <test name>`), the open (design) questions removed as you settle them, and under Decisions only the choices later tasks rely on.
+6. Keep the task current in Jarvis: its Sketch section (`prose` widgets) listing every file the sketch adds or changes, its Tests section mapping each requirement to its test names (`R1: <file> > <test name>`), the open (design) questions removed as you settle them, and under Decisions only the choices later tasks rely on that also pass this test: hard to reverse, would surprise a future reader, and a real trade-off. Everything else stays in the sketch.
 
 I review the sketch in the files between rounds. When I comment, fix the sketch, then show a short summary of what changed and which questions are still open. Run the project's check command before reporting that a round is ready.
+
+## Interview protocol
+
+Ask in plain chat, never through a harness's own question tool: these skills run in several harnesses, and pickers push toward canned answers.
+
+- Keep the open decisions as a tree. Each round, ask the whole frontier: every decision whose prerequisites are settled, and none that depends on an answer still open. Recompute it after my answers.
+- Format each question as `❓ **Q1** - **<title>**: <body>`, then `➡️ <your recommended answer>` alone on the next line. Word it so "yes" accepts the recommendation; I answer by number ("1 yes, 2 no, because..."). Number on across rounds, so a number always means one question.
+- Facts are yours: read the board, the code, the README, and the docs before asking, and never ask what you can find out. Decisions are mine: never answer one yourself and never go on with a guess.
+- If I say an answer changes an earlier question, reopen that branch in the next round.
+- The interview is done when no open decision is left, not before. Then say what you understood in a few lines and wait for me to confirm we share it; do not act on it, write it down as settled, or move on until I do.
+- Challenge terms: when I use a term that conflicts with a Glossary entry or with what the code does, say so at once and ask which is right; when I am vague, propose one precise term; test a fuzzy boundary with a concrete edge-case scenario. When I state how something works, check the code and surface any contradiction.
+- Write each term as a `glossary_term` widget the moment I agree to it, not at the end; the closing confirmation covers the rest.
 
 ## 4. Finish
 
