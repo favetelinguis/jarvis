@@ -1,7 +1,7 @@
 defmodule JarvisWeb.Api.AgentScope do
   @moduledoc """
   Resolves the calling agent from the `x-jarvis-cwd`, `x-jarvis-session`, and
-  `x-jarvis-session-name` headers and assigns
+  `x-jarvis-session-name`, and `x-jarvis-agent` (pi when absent) headers and assigns
   `current_scope`. Header values are URI-encoded so any path survives.
 
   Every request also counts as the session's heartbeat.
@@ -13,7 +13,8 @@ defmodule JarvisWeb.Api.AgentScope do
   @headers %{
     "x-jarvis-cwd" => "cwd",
     "x-jarvis-session" => "session_id",
-    "x-jarvis-session-name" => "session_name"
+    "x-jarvis-session-name" => "session_name",
+    "x-jarvis-agent" => "agent"
   }
 
   def init(opts), do: opts

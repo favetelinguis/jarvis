@@ -58,8 +58,7 @@ config :jarvis, dev_routes: true
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 
-# Info, not debug: debug logs every SQL query with its parameters, which for
-# transcript sync means the full content of every mirrored session line.
+# Info, not debug: debug logs every SQL query with its parameters.
 config :logger, level: :info
 
 # Set a higher stacktrace during development. Avoid configuring such

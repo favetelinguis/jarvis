@@ -53,4 +53,21 @@ defmodule JarvisWeb.SettingsLiveTest do
     assert has_element?(view, "#contrast-table tr")
     refute has_element?(view, "#contrast-table .text-error")
   end
+
+  describe "integrations panel" do
+    test "shows a row per agent and installs and uninstalls pi", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/settings")
+      _ = render_async(view)
+      for agent <- ~w(pi codex copilot), do: assert(has_element?(view, "#integration-#{agent}"))
+      assert has_element?(view, "#integration-state-pi", "Not installed")
+      assert has_element?(view, "#uninstall-pi[disabled]")
+
+      view |> element("#install-pi") |> render_click()
+      assert has_element?(view, "#integration-state-pi", "Installed")
+      refute has_element?(view, "#uninstall-pi[disabled]")
+
+      view |> element("#uninstall-pi") |> render_click()
+      assert has_element?(view, "#integration-state-pi", "Not installed")
+    end
+  end
 end

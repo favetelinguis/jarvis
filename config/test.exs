@@ -33,5 +33,3 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
-
-config :jarvis, transcript_roots: [Path.join(System.tmp_dir!(), "jarvis-test-transcripts")]

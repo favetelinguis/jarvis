@@ -30,7 +30,8 @@ defmodule Jarvis.Workspaces do
 
   ## Registration
 
-  @identity_types %{cwd: :string, session_id: :string, session_name: :string}
+  @agents ~w(pi codex copilot)
+  @identity_types %{cwd: :string, session_id: :string, session_name: :string, agent: :string}
 
   @doc """
   Upserts the caller's project, worktree, and agent session and returns their scope.
@@ -43,7 +44,10 @@ defmodule Jarvis.Workspaces do
     changeset =
       {%{}, @identity_types}
       |> cast(params, Map.keys(@identity_types))
-      |> validate_required([:cwd, :session_id])
+      |> validate_required([:cwd])
+      |> validate_inclusion(:agent, @agents)
+      |> default_agent()
+      |> require_session_id()
       |> validate_length(:cwd, max: 4096)
       |> validate_length(:session_id, max: 255)
       |> validate_length(:session_name, max: 255)
@@ -54,9 +58,22 @@ defmodule Jarvis.Workspaces do
        %Scope{
          project: project,
          worktree: worktree,
-         agent_session: upsert_session(project, worktree, id)
+         agent_session: upsert_session(project, worktree, with_session_id(id, worktree))
        }}
     end
+  end
+
+  defp agent_atom(name), do: Enum.find([:pi, :codex, :copilot], &(Atom.to_string(&1) == name))
+
+  defp default_agent(changeset),
+    do: if(get_field(changeset, :agent), do: changeset, else: put_change(changeset, :agent, "pi"))
+
+  # Only pi always has a session id. The board tools of Codex and Copilot CLI
+  # arrive without one; they act as the agent's session in that worktree.
+  defp require_session_id(changeset) do
+    if get_field(changeset, :agent) == "pi",
+      do: validate_required(changeset, [:session_id]),
+      else: changeset
   end
 
   @doc "Upserts the project and worktree that the directory `cwd` belongs to."
@@ -87,12 +104,32 @@ defmodule Jarvis.Workspaces do
     end
   end
 
+  # Without a session id: the newest live session of that agent in the worktree,
+  # else a stand-in session for it.
+  defp with_session_id(%{session_id: id} = identity, _worktree) when is_binary(id), do: identity
+
+  defp with_session_id(identity, worktree) do
+    agent = agent_atom(identity.agent)
+
+    existing =
+      Repo.one(
+        from s in AgentSession,
+          where: s.worktree_id == ^worktree.id and s.agent == ^agent and s.state != :ended,
+          order_by: [desc: s.last_seen_at],
+          limit: 1,
+          select: s.pi_session_id
+      )
+
+    Map.put(identity, :session_id, existing || "#{identity.agent}:#{worktree.path}")
+  end
+
   defp upsert_session(project, worktree, id) do
     newest_comment = Repo.one(from c in "comments", select: max(c.id)) || 0
 
     Repo.insert!(
       %AgentSession{
         pi_session_id: id.session_id,
+        agent: agent_atom(id.agent),
         name: id[:session_name],
         project_id: project.id,
         worktree_id: worktree.id,

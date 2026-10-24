@@ -6,9 +6,9 @@ A live task board and session mirror for coding agents. See README.md for usage.
 
 - `lib/jarvis/workspaces.ex`: projects, worktrees, agent sessions; resolved from a `cwd` with git (`Workspaces.Git`).
 - `lib/jarvis/planning.ex`: goals, tasks, comments, activity events. Every function takes a `Jarvis.Scope` (agent or human) first.
-- `lib/jarvis/transcripts.ex`: mirrors harness session files (raw lines + harness-neutral reading) and restores them. One module per harness implements `Jarvis.Transcripts.Harness`.
+- `lib/jarvis/integrations.ex`: installs, removes, and reports Jarvis in the user-level config of pi, Codex, and Copilot CLI (the Integrations panel).
 - `lib/jarvis_web/api/`: JSON API used by the pi extension and the Codex hook. `lib/jarvis_web/live/`: the board.
-- `pi/`: the pi package (extension + workflow prompts). `codex/hooks.toml`: the Codex hook.
+- `pi/`: the pi package (extension). `agent/`: the MCP server and hook scripts for Codex and Copilot CLI. `skills/`: the nine workflows as SKILL.md skills.
 
 ## Commands
 

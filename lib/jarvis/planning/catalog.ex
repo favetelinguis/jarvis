@@ -962,7 +962,7 @@ defmodule Jarvis.Planning.Catalog do
     do: %{
       "term" => "Listening session",
       "meaning" => "The live agent session that receives anchored comments for a goal or task.",
-      "limits" => "Codex sessions never listen."
+      "limits" => "Codex and Copilot CLI sessions hear it at their next turn; only pi is woken."
     }
 
   def example("decision"),

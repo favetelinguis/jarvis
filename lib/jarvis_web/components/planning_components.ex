@@ -36,22 +36,6 @@ defmodule JarvisWeb.PlanningComponents do
     """
   end
 
-  attr :harness, :atom, required: true
-
-  def harness_badge(assigns) do
-    ~H"""
-    <span class={[
-      "inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide",
-      if(@harness == :pi,
-        do: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300",
-        else: "bg-teal-500/10 text-teal-700 dark:text-teal-300"
-      )
-    ]}>
-      {@harness}
-    </span>
-    """
-  end
-
   attr :presence, :atom, required: true
 
   def presence_dot(assigns) do
@@ -168,6 +152,9 @@ defmodule JarvisWeb.PlanningComponents do
           </span>
         </div>
         <div class="mt-1 flex flex-wrap items-center gap-1.5 pl-4.5 text-xs text-base-content/60">
+          <span class="rounded-md bg-base-200 px-1.5 py-0.5 font-mono text-[10px] uppercase">
+            {session.agent}
+          </span>
           <.worktree_chip worktree={session.worktree} />
           <.link
             :if={session.task}

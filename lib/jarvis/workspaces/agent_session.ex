@@ -1,6 +1,6 @@
 defmodule Jarvis.Workspaces.AgentSession do
   @moduledoc """
-  A pi session working in a worktree. `task` is the task it last changed, shown
+  An agent session (pi, Codex, or Copilot CLI) working in a worktree. `task` is the task it last changed, shown
   as its focus; `inbox_cursor` is the last comment id it has been shown.
   """
   use Ecto.Schema
@@ -10,6 +10,7 @@ defmodule Jarvis.Workspaces.AgentSession do
   schema "agent_sessions" do
     field :pi_session_id, :string
     field :name, :string
+    field :agent, Ecto.Enum, values: [:pi, :codex, :copilot], default: :pi
     field :state, Ecto.Enum, values: [:idle, :working, :ended], default: :idle
     field :last_seen_at, :utc_datetime_usec
     field :inbox_cursor, :integer, default: 0
@@ -28,4 +29,12 @@ defmodule Jarvis.Workspaces.AgentSession do
   def presence(%__MODULE__{state: state, last_seen_at: seen}, now) do
     if DateTime.diff(now, seen) > @away_after_seconds, do: :away, else: state
   end
+
+  @doc """
+  How a comment reaches a listening session: pi is woken (`true`); Codex and
+  Copilot CLI hear it at their next turn (`:next_turn`); no listener is `false`.
+  """
+  def listening(nil), do: false
+  def listening(%__MODULE__{agent: :pi}), do: true
+  def listening(%__MODULE__{}), do: :next_turn
 end

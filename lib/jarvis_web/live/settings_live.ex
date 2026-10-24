@@ -5,14 +5,20 @@ defmodule JarvisWeb.SettingsLive do
   """
   use JarvisWeb, :live_view
 
-  alias Jarvis.{Planning.Catalog, Theme}
+  alias Jarvis.{Integrations, Planning.Catalog, Theme}
 
   import JarvisWeb.WidgetComponents
 
   @impl true
   def mount(_params, _session, socket) do
+    socket =
+      if connected?(socket),
+        do: start_async(socket, :integrations, &Integrations.list/0),
+        else: socket
+
     {:ok,
      socket
+     |> assign(:integrations, [])
      |> assign(:page_title, "Settings")
      |> assign(:colors, Theme.current())
      |> assign(:errors, %{})
@@ -21,6 +27,18 @@ defmodule JarvisWeb.SettingsLive do
   end
 
   @impl true
+  def handle_async(:integrations, {:ok, integrations}, socket),
+    do: {:noreply, assign(socket, :integrations, integrations)}
+
+  def handle_async(:integrations, {:exit, _reason}, socket), do: {:noreply, socket}
+
+  @impl true
+  def handle_event("install", %{"agent" => agent}, socket),
+    do: {:noreply, change_integration(socket, agent, &Integrations.install/1)}
+
+  def handle_event("uninstall", %{"agent" => agent}, socket),
+    do: {:noreply, change_integration(socket, agent, &Integrations.uninstall/1)}
+
   def handle_event("change", params, socket) do
     colors =
       case params["_target"] do
@@ -52,6 +70,30 @@ defmodule JarvisWeb.SettingsLive do
     {:noreply,
      socket |> assign(colors: Theme.defaults(), errors: %{}, saved?: false) |> preview()}
   end
+
+  defp change_integration(socket, agent, fun) do
+    case Enum.find(socket.assigns.integrations, &(Atom.to_string(&1.agent) == agent)) do
+      nil ->
+        socket
+
+      current ->
+        updated = fun.(current.agent)
+
+        assign(
+          socket,
+          :integrations,
+          Enum.map(
+            socket.assigns.integrations,
+            &if(&1.agent == updated.agent, do: updated, else: &1)
+          )
+        )
+    end
+  end
+
+  defp integration_state_label(:installed), do: "Installed"
+  defp integration_state_label(:partial), do: "Partly installed"
+  defp integration_state_label(:not_installed), do: "Not installed"
+  defp integration_state_label(:unreadable), do: "Unreadable"
 
   defp validate(socket) do
     case Theme.validate(socket.assigns.colors) do
@@ -194,6 +236,72 @@ defmodule JarvisWeb.SettingsLive do
           </div>
         </div>
       </div>
+      <section id="integrations-panel" class="mt-10">
+        <h2 class="text-xl font-semibold tracking-tight">Integrations</h2>
+        <p class="mt-1 max-w-2xl text-sm text-base-content/70">
+          Install Jarvis into your coding agents. It changes only their user-level configuration, for every project.
+        </p>
+        <div class="mt-4 max-w-xl">
+          <ul id="integrations" class="space-y-2">
+            <li
+              :for={row <- @integrations}
+              id={"integration-#{row.agent}"}
+              class="rounded-lg border border-base-200 px-3 py-2"
+            >
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-medium">{row.label}</span>
+                <span class="font-mono text-xs text-base-content/50">
+                  <%= case row.cli do %>
+                    <% {:ok, version} -> %>
+                      {version}
+                    <% :not_found -> %>
+                      CLI not found
+                  <% end %>
+                </span>
+                <span
+                  id={"integration-state-#{row.agent}"}
+                  class={[
+                    "ml-auto text-xs font-medium",
+                    row.state == :installed && "text-success",
+                    row.state == :unreadable && "text-error"
+                  ]}
+                >
+                  {integration_state_label(row.state)}
+                </span>
+              </div>
+              <p
+                :if={row.error}
+                id={"integration-error-#{row.agent}"}
+                class="mt-1 break-words text-xs text-error"
+              >
+                {row.error}
+              </p>
+              <div class="mt-2 flex gap-2">
+                <button
+                  id={"install-#{row.agent}"}
+                  type="button"
+                  phx-click="install"
+                  phx-value-agent={row.agent}
+                  disabled={row.cli == :not_found or row.state == :unreadable}
+                  class="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-content transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Install
+                </button>
+                <button
+                  id={"uninstall-#{row.agent}"}
+                  type="button"
+                  phx-click="uninstall"
+                  phx-value-agent={row.agent}
+                  disabled={row.state in [:not_installed, :unreadable]}
+                  class="rounded-md border border-base-300 px-2.5 py-1 text-xs font-medium transition hover:bg-base-200 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Uninstall
+                </button>
+              </div>
+            </li>
+          </ul>
+        </div>
+      </section>
     </Layouts.app>
     """
   end

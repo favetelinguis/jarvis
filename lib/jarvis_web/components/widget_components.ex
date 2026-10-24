@@ -221,7 +221,11 @@ defmodule JarvisWeb.WidgetComponents do
           name={if @ctx.listening, do: "hero-signal-mini", else: "hero-signal-slash-mini"}
           class="size-3.5"
         />
-        {if @ctx.listening, do: "The agent is being woken…", else: "No agent listening"}
+        {cond do
+          @ctx.listening == :next_turn -> "Will be delivered at the session's next turn"
+          @ctx.listening -> "The agent is being woken…"
+          true -> "No agent listening"
+        end}
       </p>
     </div>
     """

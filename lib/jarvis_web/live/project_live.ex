@@ -1,11 +1,11 @@
 defmodule JarvisWeb.ProjectLive do
   @moduledoc """
   One project at a glance: goals with their tasks, which agent sessions are
-  live and what they focus on, mirrored session transcripts, and the activity feed.
+  live and what they focus on, and the activity feed.
   """
   use JarvisWeb, :live_view
 
-  alias Jarvis.{Planning, Scope, Transcripts, Workspaces}
+  alias Jarvis.{Planning, Scope, Workspaces}
   alias Jarvis.Planning.TaskType
   alias Jarvis.Workspaces.AgentSession
 
@@ -71,7 +71,9 @@ defmodule JarvisWeb.ProjectLive do
     goals = Planning.list_goals(scope)
 
     matching_goals =
-      Enum.filter(goals, &(matching_tasks(&1.tasks, socket.assigns.filter) != []))
+      goals
+      |> Enum.filter(&(matching_tasks(&1.tasks, socket.assigns.filter) != []))
+      |> Enum.sort_by(& &1.number, :desc)
 
     sessions = Workspaces.list_sessions(scope.project)
     now = DateTime.utc_now()
@@ -88,7 +90,6 @@ defmodule JarvisWeb.ProjectLive do
     |> assign(:focus, focus)
     |> assign(:goal_count, length(goals))
     |> assign(:matching_goals_empty?, matching_goals == [])
-    |> assign(:transcripts, Transcripts.list_transcripts(scope.project.id, 15))
     |> stream(:goals, matching_goals, reset: true)
     |> stream(:events, Planning.list_events(scope, 40), reset: true)
   end
@@ -223,32 +224,6 @@ defmodule JarvisWeb.ProjectLive do
         <aside class="space-y-4">
           <.panel title="Agent sessions" id="sessions-panel">
             <.session_list sessions={@sessions} now={@now} />
-          </.panel>
-
-          <.panel title="Transcripts" id="transcripts-panel">
-            <ul id="transcripts" class="space-y-1">
-              <li :if={@transcripts == []} class="px-2 py-3 text-sm text-base-content/50">
-                No mirrored sessions yet.
-              </li>
-              <li :for={t <- @transcripts} id={"transcript-#{t.id}"}>
-                <.link
-                  navigate={~p"/transcripts/#{t.id}"}
-                  class="block rounded-lg px-2 py-2 transition hover:bg-base-200"
-                >
-                  <div class="flex items-center gap-2">
-                    <.harness_badge harness={t.harness} />
-                    <span class="min-w-0 flex-1 truncate text-sm">{t.title || t.external_id}</span>
-                  </div>
-                  <div class="mt-1 flex items-center gap-2 pl-1 text-xs text-base-content/50">
-                    <.worktree_chip worktree={t.worktree} />
-                    <span>{t.line_count} lines</span>
-                    <span :if={t.last_entry_at} class="ml-auto">
-                      <.time_ago at={t.last_entry_at} now={@now} />
-                    </span>
-                  </div>
-                </.link>
-              </li>
-            </ul>
           </.panel>
 
           <.panel title="Activity" id="activity-panel">

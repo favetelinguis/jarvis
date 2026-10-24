@@ -23,28 +23,13 @@ defmodule JarvisWeb.Router do
       live "/projects/:project", ProjectLive
       live "/projects/:project/goals/:goal", GoalLive
       live "/projects/:project/goals/:goal/tasks/:task", TaskLive
-      live "/transcripts/:id", TranscriptLive
       live "/design-system", DesignSystemLive
       live "/settings", SettingsLive
     end
   end
 
-  pipeline :hook do
-    plug :accepts, ["json"]
-  end
-
-  # Called by harness hooks, which know a session file but not the Jarvis identity headers.
-  scope "/api", JarvisWeb.Api do
-    pipe_through :hook
-
-    post "/transcripts/sync", TranscriptController, :sync
-  end
-
   scope "/api", JarvisWeb.Api do
     pipe_through :api
-
-    get "/transcripts", TranscriptController, :index
-    post "/transcripts/:id/restore", TranscriptController, :restore
 
     get "/overview", PlanningController, :overview
     post "/goals", PlanningController, :create_goal

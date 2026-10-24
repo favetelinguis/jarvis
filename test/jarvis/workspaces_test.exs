@@ -39,6 +39,33 @@ defmodule Jarvis.WorkspacesTest do
       assert scope.worktree.branch == nil
     end
 
+    test "a Codex tool call without a session id acts as the agent's live session there" do
+      repo = git_repo!()
+
+      {:ok, hooked} =
+        Workspaces.register(%{"cwd" => repo, "session_id" => "codex-1", "agent" => "codex"})
+
+      {:ok, called} = Workspaces.register(%{"cwd" => repo, "agent" => "codex"})
+      assert called.agent_session.id == hooked.agent_session.id
+      assert called.agent_session.agent == :codex
+      assert called.worktree.id == hooked.worktree.id
+    end
+
+    test "an agent without any session gets a stand-in session, and pi still needs an id" do
+      repo = git_repo!()
+      assert {:ok, scope} = Workspaces.register(%{"cwd" => repo, "agent" => "copilot"})
+      assert scope.agent_session.agent == :copilot
+      assert {:error, %Ecto.Changeset{}} = Workspaces.register(%{"cwd" => repo})
+      assert {:error, %Ecto.Changeset{}} = Workspaces.register(%{"cwd" => repo, "agent" => "vim"})
+    end
+
+    test "only pi sessions are woken; Codex and Copilot CLI hear comments at their next turn" do
+      alias Jarvis.Workspaces.AgentSession
+      assert AgentSession.listening(%AgentSession{agent: :pi})
+      assert AgentSession.listening(%AgentSession{agent: :codex}) == :next_turn
+      assert AgentSession.listening(nil) == false
+    end
+
     test "registering the same session again updates it instead of adding one" do
       repo = git_repo!()
       first = agent_scope!(repo, "same")

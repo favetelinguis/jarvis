@@ -1,6 +1,5 @@
 /**
- * Jarvis: a shared, live task board for agents and the human, plus a mirror
- * of every session's context in PostgreSQL.
+ * Jarvis: a shared, live task board for agents and the human.
  *
  * - Tools let the agent read and write goals, tasks, and comments in the
  *   Jarvis server; the project and worktree come from the session's cwd.
@@ -9,9 +8,6 @@
  * - Human comments left in the web UI are delivered at the start of the
  *   next turn. Comments on a widget, or on a part of one, wake an idle
  *   session within seconds: the extension polls /api/wake and starts a turn.
- * - After every turn the session file is mirrored into Jarvis, so
- *   /jarvis-resume can bring the exact session back, even after the local
- *   file is gone.
  *
  * Configure the server with JARVIS_URL (default http://localhost:4000).
  */
@@ -34,17 +30,6 @@ interface Reply {
 	task?: number;
 }
 
-interface TranscriptSummary {
-	id: number;
-	harness: "pi" | "codex";
-	session_id: string;
-	title: string | null;
-	lines: number;
-	worktree: string | null;
-	branch: string | null;
-	last_entry_at: string | null;
-}
-
 class JarvisError extends Error {}
 
 export default function jarvis(pi: ExtensionAPI) {
@@ -54,8 +39,6 @@ export default function jarvis(pi: ExtensionAPI) {
 	let wakePoll: ReturnType<typeof setInterval> | undefined;
 	let waking = false;
 	let online: boolean | undefined;
-	// Syncs run one at a time so a slow sync never races the next one.
-	let syncChain: Promise<unknown> = Promise.resolve();
 
 	function headers(ctx: ExtensionContext): Record<string, string> {
 		const h: Record<string, string> = {
@@ -110,18 +93,6 @@ export default function jarvis(pi: ExtensionAPI) {
 		quietly(api(ctx, "PUT", "/session", { state: next }));
 	}
 
-	function syncTranscript(ctx: ExtensionContext): Promise<unknown> {
-		const transcriptPath = ctx.sessionManager.getSessionFile();
-		if (!transcriptPath) return Promise.resolve(); // --no-session
-		const body = {
-			session_id: ctx.sessionManager.getSessionId(),
-			transcript_path: transcriptPath,
-			cwd: ctx.cwd,
-		};
-		syncChain = syncChain.then(() => api(ctx, "POST", "/transcripts/sync?harness=pi", body)).catch(() => {});
-		return syncChain;
-	}
-
 	function stopHeartbeat() {
 		if (heartbeat) clearInterval(heartbeat);
 		heartbeat = undefined;
@@ -150,7 +121,6 @@ export default function jarvis(pi: ExtensionAPI) {
 		ctxRef = ctx;
 		online = undefined;
 		reportState(ctx, "idle");
-		quietly(syncTranscript(ctx));
 		stopHeartbeat();
 		heartbeat = setInterval(() => {
 			if (ctxRef) quietly(api(ctxRef, "PUT", "/session", { state }));
@@ -160,19 +130,13 @@ export default function jarvis(pi: ExtensionAPI) {
 
 	pi.on("agent_start", async (_event, ctx) => reportState(ctx, "working"));
 
-	pi.on("turn_end", async (_event, ctx) => {
-		quietly(syncTranscript(ctx));
-	});
-
 	pi.on("agent_end", async (_event, ctx) => {
 		reportState(ctx, "idle");
-		quietly(syncTranscript(ctx));
 	});
 
 	pi.on("session_shutdown", async (_event, ctx) => {
 		stopHeartbeat();
-		// Awaited so the final turn and the ended state are recorded before pi exits.
-		await syncTranscript(ctx);
+		// Awaited so the ended state is recorded before pi exits.
 		await api(ctx, "PUT", "/session", { state: "ended" }).catch(() => {});
 		ctxRef = undefined;
 	});
@@ -347,47 +311,6 @@ export default function jarvis(pi: ExtensionAPI) {
 			} catch (error) {
 				ctx.ui.notify((error as Error).message, "error");
 			}
-		},
-	});
-
-	pi.registerCommand("jarvis-resume", {
-		description: "Restore a session of this project from Jarvis and resume it (Codex sessions print their resume command)",
-		handler: async (_args, ctx) => {
-			let transcripts: TranscriptSummary[];
-			try {
-				transcripts = (await api<{ transcripts: TranscriptSummary[] }>(ctx, "GET", "/transcripts")).transcripts;
-			} catch (error) {
-				ctx.ui.notify((error as Error).message, "error");
-				return;
-			}
-			if (transcripts.length === 0) {
-				ctx.ui.notify("Jarvis has no sessions for this project yet.", "info");
-				return;
-			}
-
-			const labels = transcripts.map((t) => {
-				const when = t.last_entry_at ? t.last_entry_at.slice(0, 16).replace("T", " ") : "";
-				const where = t.worktree ? `${t.worktree}${t.branch ? `@${t.branch}` : ""}` : "";
-				return `[${t.harness}] ${(t.title ?? t.session_id).slice(0, 70)} · ${where} · ${t.lines} lines · ${when}`;
-			});
-			const choice = await ctx.ui.select("Restore which session?", labels);
-			if (choice === undefined) return;
-			const picked = transcripts[labels.indexOf(choice)];
-
-			let restored: { status: string; path: string; backup: string | null; command: string };
-			try {
-				restored = await api(ctx, "POST", `/transcripts/${picked.id}/restore`);
-			} catch (error) {
-				ctx.ui.notify((error as Error).message, "error");
-				return;
-			}
-
-			if (restored.backup) ctx.ui.notify(`The file on disk differed; kept it as ${restored.backup}`, "warning");
-			if (picked.harness !== "pi") {
-				ctx.ui.notify(`Restored. Resume it with:\n${restored.command}`, "info");
-				return;
-			}
-			await ctx.switchSession(restored.path);
 		},
 	});
 }

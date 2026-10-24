@@ -131,6 +131,31 @@ defmodule JarvisWeb.ProjectLiveTest do
     assert has_element?(view, "#no-goals")
   end
 
+  test "lists goals newest first, including one created while open", %{conn: conn, scope: scope} do
+    g1 = goal!(scope)
+    task!(scope, g1)
+    g2 = goal!(scope)
+    task!(scope, g2)
+    {:ok, view, _html} = live(conn, ~p"/projects/#{scope.project}")
+    order = fn v -> Regex.scan(~r/id="(goals-\d+)"/, render(v)) |> Enum.map(&List.last/1) end
+    assert order.(view) == ["goals-#{g2.id}", "goals-#{g1.id}"]
+
+    g3 = goal!(scope)
+    task!(scope, g3)
+    _ = render(view)
+    assert order.(view) == ["goals-#{g3.id}", "goals-#{g2.id}", "goals-#{g1.id}"]
+  end
+
+  test "there is no transcripts panel and transcript pages are not found", %{
+    conn: conn,
+    scope: scope
+  } do
+    {:ok, view, _} = board(conn, scope)
+    refute has_element?(view, "#transcripts-panel")
+    assert get(conn, "/transcripts/5").status == 404
+    assert post(conn, "/api/transcripts/sync").status == 404
+  end
+
   test "lists projects and links to them", %{conn: conn, scope: scope} do
     {:ok, view, _html} = live(conn, ~p"/")
     assert has_element?(view, "#project-#{scope.project.id}")

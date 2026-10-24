@@ -1,13 +1,12 @@
 # Jarvis
 
-Jarvis is a live task board that coding agents and you share, and a mirror of every agent session's context in PostgreSQL.
+Jarvis is a live task board that coding agents (pi, Codex, GitHub Copilot CLI) and you share.
 
 - **Board.** Agents write goals and tasks through tools, and you watch them change live in the browser. Every task has a **type** (Feature, Research, PR review, Learn) with its own **lifecycle**, drawn as a graph.
 - **Widgets.** Goal and task pages are built from visual, interactive widgets (requirement cards, examples you explore, diagrams, architecture tours, comparisons, quizzes, code walkthroughs, review findings) instead of markdown. See the **Design system** page for all of them, playable.
 - **Comment on anything.** You can comment on any widget or any part of one. The agent session working on the task is woken within seconds and either updates that widget live or answers in the thread. All sessions, worktrees, and branches of a repository share one board, so a `/design` session in one worktree and an `/impl` session in another work from the same tasks.
-- **Two-way.** You can move a task, release a worktree's claim, or comment from the browser. Comments reach the agents concerned at the start of their next turn.
-- **Presence.** Every pi session reports whether it is *working* or *waiting for you*, which worktree it runs in, and which task it focuses on.
-- **Session mirror.** After every turn, the session file of pi (and of Codex, through a hook) is copied into Postgres line by line. You can restore any session from Jarvis and resume it exactly as `/resume` would, even after the local file is gone.
+- **Two-way.** You can move a task, release a worktree's claim, or comment from the browser. Comments reach the agents concerned at the start of their next turn; pi sessions that are idle are woken.
+- **Presence.** Every pi, Codex, and Copilot CLI session reports whether it is *working* or *waiting for you*, which worktree it runs in, and which task it focuses on.
 
 Built with Elixir, Phoenix LiveView, and Ecto, on PostgreSQL in Docker.
 
@@ -45,38 +44,42 @@ systemctl --user enable --now jarvis
 
 PostgreSQL runs as `jarvis-db-1` on `127.0.0.1:5432` with a named volume (`jarvis-pgdata`), so data survives restarts. The server binds to `127.0.0.1` only and has no authentication: it is a local, single-user tool.
 
-Browser live-reload, for developing Jarvis itself, uses inotify when `inotify-tools` is installed and otherwise polls `lib/jarvis_web` and `priv/static` once a second. The dev server logs at `info`, because `debug` would print every SQL query, including the contents of mirrored sessions.
+Browser live-reload, for developing Jarvis itself, uses inotify when `inotify-tools` is installed and otherwise polls `lib/jarvis_web` and `priv/static` once a second. The dev server logs at `info`, because `debug` would print every SQL query.
 
-## Use it from pi
+## Install it in your agents
 
-The pi package in `pi/` contains:
+On the **Settings** page, the **Integrations** section has one row per agent: whether its CLI is found (with version), whether Jarvis is **Installed**, **Partly installed**, **Not installed**, or **Unreadable**, and **Install** / **Uninstall** buttons. The state is read from the agent's user-level configuration each time; Jarvis only adds, updates, and removes its own entries and never touches a project file.
 
-- **The extension** `pi/extensions/jarvis.ts`: tools, presence, inbox, session mirroring, and the `/jarvis` and `/jarvis-resume` commands.
-- **Workflow prompts** `pi/prompts/`: `/specify`, `/design`, `/design-review`, `/impl`, `/impl-review` (the Feature lifecycle), `/research`, `/pr-review`, `/learn` (the other task types), and `/poc` (see below).
+| Agent | What Install adds |
+| --- | --- |
+| pi | The package `pi/` in `~/.pi/agent/settings.json`: board tools, presence, comment wake-ups |
+| Codex | In `~/.codex/config.toml`, marked `# >>> jarvis` blocks: the board tools as an MCP server (`agent/jarvis-mcp.mjs`) and hooks for presence and comment delivery (`agent/jarvis-hook.mjs`). Also removes the old session-mirror hook |
+| Copilot CLI | `mcpServers.jarvis` in `~/.copilot/mcp-config.json`, and presence/comment hooks in `~/.copilot/settings.json` |
+| all three | The nine workflow skills in `skills/` copied to `~/.agents/skills/`, one copy for all agents |
 
-Inside this repository it already loads through `.pi/settings.json`. To use it in every project, install it once:
+The agents need `node` for Codex and Copilot CLI (the MCP server and hooks are small scripts). If the server is not at `http://localhost:4000`, it records the URL the panel was opened on. Re-click Install to bring the skills up to date after changing them in this repository. Codex may ask you to trust the new hooks.
 
-```bash
-pi install ~/repos/jarvis/pi
-```
+Codex and Copilot CLI sessions show on the board, and they receive your comments at the start of their next turn. They are never woken while idle.
 
-Pi loads a local package in place, so changes in this repository take effect on the next `/reload`. If the server runs elsewhere, set `JARVIS_URL` (default `http://localhost:4000`).
+The pi package in `pi/` contains the extension `pi/extensions/jarvis.ts`: tools, presence, inbox, and the `/jarvis` command. Inside this repository it already loads through `.pi/settings.json`. Pi loads a local package in place, so changes take effect on the next `/reload`. If the server runs elsewhere, set `JARVIS_URL` (default `http://localhost:4000`).
 
 ### The workflow
 
+Workflows are skills that start only when you name them: `/skill:specify` in pi, `$specify` in Codex, `/specify` in Copilot CLI, followed by the input.
+
 A Feature task moves through **Requirements → Design → Implementation → Review → Done**; the task page shows the graph, where the task came from, and who moves it next.
 
-1. `/specify add a live task board`: the agent interviews you and writes the goal and its tasks to Jarvis, each requirement as a card. You confirm each card (or question it on the card), then click **approve requirements**: that move is always yours.
-2. `/design` in the worktree that should build the task: the agent claims it and sketches it in the code. `/design-review` approves the design and moves it on.
-3. `/impl`, then `/impl-review`: the reviewer moves the task to **Done** (or back to Implementation) and leaves its verdict as a comment.
+1. `specify add a live task board`: the agent interviews you and writes the goal and its tasks to Jarvis, each requirement as a card. You confirm each card (or question it on the card), then click **approve requirements**: that move is always yours.
+2. `design` in the worktree that should build the task: the agent claims it and sketches it in the code. `design-review` approves the design and moves it on.
+3. `impl`, then `impl-review`: the reviewer moves the task to **Done** (or back to Implementation) and leaves its verdict as a comment.
 
-Research, PR review, and Learn tasks have their own prompts and lifecycles (`/research`, `/pr-review`, `/learn`).
+Research, PR review, and Learn tasks have their own skills and lifecycles (`research`, `pr-review`, `learn`).
 
 Several sessions in several worktrees can run at once. Each claims its own task, and the board shows which session works where.
 
 ### POC mode
 
-`/poc Goal N` (or `/poc <what to build>`) skips the strict workflow: the agent builds every task of the goal in one go, moving tasks along their lifecycle with `force_step` (the override that ignores human-only transitions), leaving a comment on each. Use it to see a result fast; use the normal workflow when you want to review each step.
+`poc Goal N` (or `poc <what to build>`) skips the strict workflow: the agent builds every task of the goal in one go, moving tasks along their lifecycle with `force_step` (the override that ignores human-only transitions), leaving a comment on each. Use it to see a result fast; use the normal workflow when you want to review each step.
 
 ### Tools
 
@@ -93,58 +96,30 @@ Goals are numbered per project and tasks per goal (Goal 3, Task 3.2). Numbers ar
 
 ### How a comment on a widget reaches the agent
 
-Every widget and every part carries a comment button. A comment stores its anchor (widget id, part id, and the anchor's text at that moment). While a pi session is idle, the extension polls `/api/wake` every 2 seconds; the **listening session** of the task (the live session focused on it, else one in its claiming worktree) receives the comment as a message and starts a turn. A busy session receives it when its turn ends. If no session listens, the thread says so, and the comment waits. Codex sessions are never woken.
+Every widget and every part carries a comment button. A comment stores its anchor (widget id, part id, and the anchor's text at that moment). While a pi session is idle, the extension polls `/api/wake` every 2 seconds; the **listening session** of the task (the live session focused on it, else one in its claiming worktree) receives the comment as a message and starts a turn. A busy session receives it when its turn ends. If no session listens, the thread says so, and the comment waits. Only pi sessions are woken; Codex and Copilot CLI sessions hear it at their next turn, and the thread says so.
 
 ### Commands
 
 - `/jarvis` shows this project's board in the terminal, with its link.
-- `/jarvis-resume` lists the project's mirrored sessions (pi and Codex) and restores the one you pick. A pi session opens right away. For a Codex session, it prints the `codex resume` command.
 
 ### How the project is found
 
 The server resolves each request's working directory with git. Every worktree of a repository has the same git common dir, which identifies the project, and its top level and branch identify the worktree. A directory outside git is a project of its own. A session is identified by its pi session id, so resumed sessions keep their identity.
 
-If the server is down, pi keeps working: the footer shows `jarvis ○ offline` and the Jarvis tools return an error that tells the agent to stop and ask you. The session mirror catches up on the next turn after the server is back.
+If the server is down, the agents keep working: in pi the footer shows `jarvis ○ offline`, and the Jarvis tools of every agent return an error that tells the agent to stop and ask you.
 
-## Use it from Codex
-
-Codex has no extension API, but its hooks pass the session file's location on stdin. Append `codex/hooks.toml` to `~/.codex/config.toml`:
-
-```bash
-cat ~/repos/jarvis/codex/hooks.toml >> ~/.codex/config.toml
-```
-
-After every turn (`Stop`) and at exit (`SessionEnd`), the hook forwards that JSON to Jarvis, which reads the rollout file itself. Codex sessions appear under **Transcripts** on the project page, filed under the right worktree. Restore one from the browser or with `/jarvis-resume`, then run the `codex resume <id>` command shown.
-
-Codex sessions are mirrored and restorable, but Codex has no board tools, presence, or inbox.
-
-## Session mirror
-
-Each harness writes its sessions as JSONL: pi to `~/.pi/agent/sessions/`, Codex to `~/.codex/sessions/`. Jarvis stores one **transcript** per session, keyed by harness and session id. A transcript holds:
-
-- **every line, as exact bytes**, in order. This is the resume context. Restoring writes these bytes back to the original path, which reproduces the file exactly.
-- **a harness-neutral reading of each line**: role (`user`, `assistant`, `tool_call`, `tool_result`, `system`, `meta`), text, and time. The transcript page shows this reading, with the same layout for pi and Codex.
-
-Two rules keep the mirror exact:
-
-- **Sync is incremental and safe to repeat.** Jarvis remembers how far it read and the hash of the last line it read. Each sync reads only new complete lines and leaves a half-written line for the next sync. If a file was rewritten rather than appended to, for example by pi's session migration, Jarvis reads it again from the start.
-- **Restore never destroys data.** A file that already holds the transcript (or the transcript plus newer lines) is left alone. A file with other content is moved to `<path>.jarvis-backup-<unix time>` before the transcript is written.
-
-Jarvis only reads and writes `.jsonl` files under the transcript roots. By default these are `~/.pi/agent/sessions` (or `PI_CODING_AGENT_SESSION_DIR`) and `~/.codex/sessions` (or `$CODEX_HOME/sessions`). Override them with `JARVIS_TRANSCRIPT_ROOTS=/a:/b`.
-
-A session restores into the harness that wrote it. Converting a pi session into a Codex session, or the reverse, is not supported, because each harness's context carries its own system prompt and tool protocol.
+Codex and Copilot CLI start the MCP server in the session's working directory, which is how it finds the project. Their tool calls count as the agent's live session in that worktree.
 
 ## Browser
 
 | Page | Shows |
 | --- | --- |
 | `/` | Projects with task counts and live sessions |
-| `/projects/:id` | Goals and matching tasks with All, Unfinished, per-type, and per-step filters; type, step, claim, and focus dots. Live sessions, mirrored transcripts, activity feed |
+| `/projects/:id` | Goals and matching tasks with All, Unfinished, per-type, and per-step filters; type, step, claim, and focus dots. Live sessions, activity feed |
 | `.../goals/:n` | The goal's sections as widgets, its tasks, notes on the goal |
 | `.../goals/:n/tasks/:m` | The lifecycle graph and the moves out of the current step, every section as widgets you can comment on, who is listening, release claim, conversation with the agents |
 | `/design-system` | Every widget kind with example data, the lifecycle graphs, and the theme, all playable in memory with a simulated agent |
-| `/settings` | The brand colors (primary, secondary, accent): live preview, contrast table, save, reset |
-| `/transcripts/:id` | The session in harness-neutral form, tool calls on demand, **Restore session** |
+| `/settings` | Integrations (install Jarvis into pi, Codex, Copilot CLI) and the brand colors (primary, secondary, accent): live preview, contrast table, save, reset |
 
 The project-board filter starts at **All** on each visit. **Unfinished** hides tasks in Done; choosing a type offers that type's steps. Goals without matching tasks are hidden, but each visible goal’s progress still includes all its tasks. Filter selection stays in place during live updates; reload or return to the board to reset it.
 
@@ -156,11 +131,12 @@ Every page updates live through PubSub when an agent or another browser tab chan
 
 ## HTTP API
 
-The pi extension identifies itself with three headers. Values are URI-encoded:
+The agents identify themselves with these headers. Values are URI-encoded:
 
 - `x-jarvis-cwd`: the session's working directory
-- `x-jarvis-session`: the pi session id
+- `x-jarvis-session`: the agent session id (optional for Codex and Copilot CLI)
 - `x-jarvis-session-name` (optional)
+- `x-jarvis-agent` (optional): `pi` (default), `codex`, or `copilot`
 
 Endpoints (`/api` prefix):
 
@@ -175,9 +151,6 @@ Endpoints (`/api` prefix):
 | POST | `/wake` | The anchored comments this session must hear now (marks them delivered) |
 | PUT | `/session` | `{"state": "idle" \| "working" \| "ended"}` |
 | POST | `/inbox` | The human's plain comments this session has not seen yet (marks them seen) |
-| GET | `/transcripts` | The project's mirrored sessions |
-| POST | `/transcripts/:id/restore` | Write the session file back; returns `status`, `path`, `backup`, `command` |
-| POST | `/transcripts/sync?harness=pi\|codex` | No identity headers. Body: `session_id`, `transcript_path`, `cwd` (a Codex hook's stdin as is) |
 
 Responses carry `text`, markdown for the model, and `url`, the page in the browser.
 

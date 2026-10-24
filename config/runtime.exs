@@ -23,24 +23,6 @@ end
 config :jarvis, JarvisWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
-# Directories whose session files hooks may ask Jarvis to mirror and restore.
-if config_env() != :test do
-  home = System.user_home!()
-
-  default_roots = [
-    System.get_env("PI_CODING_AGENT_SESSION_DIR", Path.join(home, ".pi/agent/sessions")),
-    Path.join(System.get_env("CODEX_HOME", Path.join(home, ".codex")), "sessions")
-  ]
-
-  roots =
-    case System.get_env("JARVIS_TRANSCRIPT_ROOTS") do
-      nil -> default_roots
-      roots -> String.split(roots, ":", trim: true)
-    end
-
-  config :jarvis, transcript_roots: roots
-end
-
 if config_env() == :dev do
   # Reload browser tabs when matching files change. On Linux the file watcher
   # needs inotify-tools; without it, poll just the watched directories instead

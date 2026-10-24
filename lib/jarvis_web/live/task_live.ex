@@ -115,7 +115,7 @@ defmodule JarvisWeb.TaskLive do
             ui: assigns.ui,
             comments: live,
             composer: assigns.composer,
-            listening: assigns.listener != nil,
+            listening: Jarvis.Workspaces.AgentSession.listening(assigns.listener),
             now: assigns.now
           )
       )
