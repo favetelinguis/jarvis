@@ -681,6 +681,7 @@ defmodule JarvisWeb.WidgetComponents do
                   phx-value-widget={@w.id}
                   phx-value-key="sel"
                   phx-value-value={"group:#{g.id}"}
+                  value={"group:#{g.id}"}
                   class="px-3 pt-1 text-[11px] font-semibold uppercase tracking-wide text-secondary"
                 >
                   {g.label}
@@ -755,6 +756,7 @@ defmodule JarvisWeb.WidgetComponents do
                 phx-value-widget={@w.id}
                 phx-value-key="sel"
                 phx-value-value={"node:#{n["id"]}"}
+                value={"node:#{n["id"]}"}
                 class={[
                   "absolute flex items-center gap-2 px-3 text-left text-sm font-medium shadow-sm transition hover:shadow-md",
                   @node_style[n["kind"]],
@@ -811,6 +813,7 @@ defmodule JarvisWeb.WidgetComponents do
                   phx-value-widget={@w.id}
                   phx-value-key="tour"
                   phx-value-value={@index - 1}
+                  value={@index - 1}
                   disabled={@index == 0}
                   class="rounded-lg border border-base-300 px-2.5 py-1 text-xs font-medium hover:bg-base-100 disabled:opacity-40"
                 >Previous</button>
@@ -820,6 +823,7 @@ defmodule JarvisWeb.WidgetComponents do
                   phx-value-widget={@w.id}
                   phx-value-key="tour"
                   phx-value-value={@index + 1}
+                  value={@index + 1}
                   disabled={@index == length(@tour) - 1}
                   class="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-content hover:opacity-90 disabled:opacity-40"
                 >Next</button>
@@ -829,6 +833,7 @@ defmodule JarvisWeb.WidgetComponents do
                   phx-value-widget={@w.id}
                   phx-value-key="tour"
                   phx-value-value=""
+                  value=""
                   class="ml-auto text-xs text-base-content/70 hover:underline"
                 >End tour</button>
               </div>
@@ -841,6 +846,7 @@ defmodule JarvisWeb.WidgetComponents do
                 phx-value-widget={@w.id}
                 phx-value-key="tour"
                 phx-value-value="0"
+                value="0"
                 class="mt-2 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-content hover:opacity-90"
               >Start tour</button>
             <% end %>
@@ -1190,6 +1196,7 @@ defmodule JarvisWeb.WidgetComponents do
               phx-value-widget={@w.id}
               phx-value-key="claim"
               phx-value-value={if @claim && @claim["id"] == c["id"], do: "", else: c["id"]}
+              value={if @claim && @claim["id"] == c["id"], do: "", else: c["id"]}
               class={[
                 "flex-1 rounded-lg px-3 py-2 text-left text-sm transition",
                 if(@claim && @claim["id"] == c["id"],
@@ -1273,6 +1280,7 @@ defmodule JarvisWeb.WidgetComponents do
               phx-value-widget={@w.id}
               phx-value-key="step"
               phx-value-value={i}
+              value={i}
               class={[
                 "w-full rounded-lg px-2 py-1.5 text-left transition",
                 if(i == @index, do: "bg-primary text-primary-content", else: "hover:bg-base-200")
@@ -1308,6 +1316,7 @@ defmodule JarvisWeb.WidgetComponents do
               phx-value-widget={@w.id}
               phx-value-key="step"
               phx-value-value={@index - 1}
+              value={@index - 1}
               disabled={@index == 0}
               class="rounded-lg border border-base-300 px-2.5 py-1 text-xs font-medium hover:bg-base-200 disabled:opacity-40"
             >Previous</button>
@@ -1317,6 +1326,7 @@ defmodule JarvisWeb.WidgetComponents do
               phx-value-widget={@w.id}
               phx-value-key="step"
               phx-value-value={@index + 1}
+              value={@index + 1}
               disabled={@index == length(@steps) - 1}
               class="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-content hover:opacity-90 disabled:opacity-40"
             >Next</button>
@@ -1362,6 +1372,7 @@ defmodule JarvisWeb.WidgetComponents do
           phx-value-widget={@w.id}
           phx-value-key="sev"
           phx-value-value={if @filter == sev, do: "", else: sev}
+          value={if @filter == sev, do: "", else: sev}
           aria-pressed={to_string(@filter == sev)}
           class={[
             "rounded-full px-2.5 py-1 text-xs font-semibold transition",
@@ -1543,6 +1554,7 @@ defmodule JarvisWeb.WidgetComponents do
               phx-value-action="status"
               phx-value-id={s["id"]}
               phx-value-value={v}
+              value={v}
               aria-pressed={to_string(@mine[s["id"]] == v)}
               class={[
                 "rounded-lg px-2.5 py-1 text-xs font-medium capitalize transition",
@@ -1678,6 +1690,7 @@ defmodule JarvisWeb.WidgetComponents do
           phx-value-widget={@w.id}
           phx-value-action="verdict"
           phx-value-value={v}
+          value={v}
           aria-pressed={to_string(@verdict == v)}
           class={[
             "rounded-lg px-2.5 py-1 text-xs font-medium transition",
