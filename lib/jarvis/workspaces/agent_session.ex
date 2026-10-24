@@ -31,10 +31,8 @@ defmodule Jarvis.Workspaces.AgentSession do
   end
 
   @doc """
-  How a comment reaches a listening session: pi is woken (`true`); Codex and
-  Copilot CLI hear it at their next turn (`:next_turn`); no listener is `false`.
+  All three agents hear comments at their next turn (`:next_turn`); no listener is `false`.
   """
   def listening(nil), do: false
-  def listening(%__MODULE__{agent: :pi}), do: true
   def listening(%__MODULE__{}), do: :next_turn
 end

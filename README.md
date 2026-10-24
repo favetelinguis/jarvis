@@ -4,8 +4,8 @@ Jarvis is a live task board that coding agents (pi, Codex, GitHub Copilot CLI) a
 
 - **Board.** Agents write goals and tasks through tools, and you watch them change live in the browser. Every task has a **type** (Feature, Research, PR review, Learn) with its own **lifecycle**, drawn as a graph.
 - **Widgets.** Goal and task pages are built from visual, interactive widgets (requirement cards, examples you explore, diagrams, architecture tours, comparisons, quizzes, code walkthroughs, review findings) instead of markdown. See the **Design system** page for all of them, playable.
-- **Comment on anything.** You can comment on any widget or any part of one. The agent session working on the task is woken within seconds and either updates that widget live or answers in the thread. All sessions, worktrees, and branches of a repository share one board, so a `/design` session in one worktree and an `/impl` session in another work from the same tasks.
-- **Two-way.** You can move a task, release a worktree's claim, or comment from the browser. Comments reach the agents concerned at the start of their next turn; pi sessions that are idle are woken.
+- **Comment on anything.** You can comment on any widget or any part of one. The agent session working on the task receives your comment at its next turn and either updates that widget live or answers in the thread. All sessions, worktrees, and branches of a repository share one board, so a `/design` session in one worktree and an `/impl` session in another work from the same tasks.
+- **Two-way.** You can move a task, release a worktree's claim, or comment from the browser. Comments reach the agents concerned at the start of their next turn in all three harnesses; idle sessions are never woken.
 - **Presence.** Every pi, Codex, and Copilot CLI session reports whether it is *working* or *waiting for you*, which worktree it runs in, and which task it focuses on.
 
 Built with Elixir, Phoenix LiveView, and Ecto, on PostgreSQL in Docker.
@@ -52,16 +52,18 @@ On the **Settings** page, the **Integrations** section has one row per agent: wh
 
 | Agent | What Install adds |
 | --- | --- |
-| pi | The package `pi/` in `~/.pi/agent/settings.json`: board tools, presence, comment wake-ups |
+| pi | An explicit extension selection from the package `pi/` in `~/.pi/agent/settings.json`: registers the shared MCP tools, reports presence, and supplies next-turn comments |
 | Codex | In `~/.codex/config.toml`, marked `# >>> jarvis` blocks: the board tools as an MCP server (`agent/jarvis-mcp.mjs`) and hooks for presence and comment delivery (`agent/jarvis-hook.mjs`). Also removes the old session-mirror hook |
 | Copilot CLI | `mcpServers.jarvis` in `~/.copilot/mcp-config.json`, and presence/comment hooks in `~/.copilot/settings.json` |
 | all three | The nine workflow skills in `skills/` copied to `~/.agents/skills/`, one copy for all agents |
 
-The agents need `node` for Codex and Copilot CLI (the MCP server and hooks are small scripts). If the server is not at `http://localhost:4000`, it records the URL the panel was opened on. Re-click Install to bring the skills up to date after changing them in this repository. Codex may ask you to trust the new hooks.
+All three agents need `node` for the shared MCP server (and the Codex/Copilot hooks). If the server is not at `http://localhost:4000`, it records the URL the panel was opened on. Re-click Install to bring the skills up to date after changing them in this repository. Codex may ask you to trust the new hooks.
 
 Codex and Copilot CLI sessions show on the board, and they receive your comments at the start of their next turn. They are never woken while idle.
 
-The pi package in `pi/` contains the extension `pi/extensions/jarvis.ts`: tools, presence, inbox, and the `/jarvis` command. Inside this repository it already loads through `.pi/settings.json`. Pi loads a local package in place, so changes take effect on the next `/reload`. If the server runs elsewhere, set `JARVIS_URL` (default `http://localhost:4000`).
+The pi package contains a lifecycle-only extension, `pi/extensions/jarvis.ts`. At session start it registers `agent/jarvis-mcp.mjs pi` with pi's built-in MCP support, using the conversation's session ID and working directory. Tools are discovered on demand through codemode or tool search, not duplicated as native extension tools. `/mcp` shows the registered Jarvis server; shell-level `pi mcp list` does not load extensions. Inside this repository the package already loads through `.pi/settings.json`.
+
+To migrate an existing pi installation, re-click **Install** in Settings, then run `/reload` in pi or restart it. The old package-only configuration is shown as partly installed until migrated. The Jarvis footer, `/jarvis` command, and idle comment polling are removed. Codex and Copilot CLI should be restarted after updating their integration. If pi's server runs elsewhere, set `JARVIS_URL` (default `http://localhost:4000`).
 
 ### The workflow
 
@@ -96,19 +98,17 @@ Goals are numbered per project and tasks per goal (Goal 3, Task 3.2). Numbers ar
 
 ### How a comment on a widget reaches the agent
 
-Every widget and every part carries a comment button. A comment stores its anchor (widget id, part id, and the anchor's text at that moment). While a pi session is idle, the extension polls `/api/wake` every 2 seconds; the **listening session** of the task (the live session focused on it, else one in its claiming worktree) receives the comment as a message and starts a turn. A busy session receives it when its turn ends. If no session listens, the thread says so, and the comment waits. Only pi sessions are woken; Codex and Copilot CLI sessions hear it at their next turn, and the thread says so.
+Every widget and every part carries a comment button. A comment stores its anchor (widget id, part id, and the anchor's text at that moment). The **listening session** of the task (the live session focused on it, else one in its claiming worktree) receives pending comments before responding in its next turn. This applies equally to pi, Codex, and Copilot CLI: comments never start or interrupt a turn. If no session listens, the thread says so, and the comment waits.
 
-### Commands
-
-- `/jarvis` shows this project's board in the terminal, with its link.
+Pi supplies plain and anchored comments through its lifecycle extension. Codex uses its `UserPromptSubmit` hook. Copilot uses `userPromptTransformed` and returns `modifiedTransformedPrompt`: config-file `userPromptSubmitted` hooks ignore their output and cannot deliver comments.
 
 ### How the project is found
 
 The server resolves each request's working directory with git. Every worktree of a repository has the same git common dir, which identifies the project, and its top level and branch identify the worktree. A directory outside git is a project of its own. A session is identified by its pi session id, so resumed sessions keep their identity.
 
-If the server is down, the agents keep working: in pi the footer shows `jarvis ○ offline`, and the Jarvis tools of every agent return an error that tells the agent to stop and ask you.
+If the server is down, presence and comment retrieval do not prevent ordinary turns. Board-tool calls return an error asking the agent to have you start Jarvis; mutations are not automatically retried.
 
-Codex and Copilot CLI start the MCP server in the session's working directory, which is how it finds the project. Their tool calls count as the agent's live session in that worktree.
+All three harnesses use the same six MCP tool definitions. Tool calls carry the actual conversation ID: pi passes it when registering the server, Codex supplies per-call thread metadata, and Copilot supplies `COPILOT_AGENT_SESSION_ID`. Missing identity is reported as a tool error rather than guessing the newest session in the worktree. This keeps simultaneous conversations in one worktree separate.
 
 ## Browser
 

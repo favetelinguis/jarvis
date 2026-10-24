@@ -41,10 +41,63 @@ defmodule Jarvis.IntegrationsTest do
     json = path |> File.read!() |> Jason.decode!()
     assert json["theme"] == "light"
     assert "npm:other" in json["packages"]
-    assert Enum.count(json["packages"], &String.ends_with?(&1, "/pi")) == 1
+    assert Enum.count(json["packages"], &is_map/1) == 1
+
+    assert %{"source" => source, "extensions" => ["extensions/jarvis.ts"]} =
+             Enum.find(json["packages"], &is_map/1)
+
+    assert String.ends_with?(source, "/pi")
 
     assert %{state: :not_installed} = Integrations.uninstall(:pi)
     assert path |> File.read!() |> Jason.decode!() |> Map.get("packages") == ["npm:other"]
+  end
+
+  test "pi: the old package entry is migrated without duplicates", %{home: home} do
+    path = Path.join(home, ".pi/agent/settings.json")
+    Integrations.install(:pi)
+    json = path |> File.read!() |> Jason.decode!()
+    source = Path.expand("../../pi", __DIR__)
+    File.write!(path, Jason.encode!(Map.put(json, "packages", ["npm:other", source])))
+
+    assert %{state: :partial} = Integrations.status(:pi)
+    1..4 |> Task.async_stream(fn _ -> Integrations.install(:pi) end) |> Stream.run()
+    assert %{state: :installed} = Integrations.status(:pi)
+
+    assert ["npm:other", %{"source" => ^source}] =
+             path |> File.read!() |> Jason.decode!() |> Map.fetch!("packages")
+
+    installed = path |> File.read!() |> Jason.decode!()
+    File.write!(path, Jason.encode!(Map.update!(installed, "packages", &(&1 ++ [source]))))
+    assert %{state: :partial} = Integrations.status(:pi)
+    assert %{state: :installed} = Integrations.install(:pi)
+    assert length(path |> File.read!() |> Jason.decode!() |> Map.fetch!("packages")) == 2
+  end
+
+  test "pi: unreadable configuration is also untouched by uninstall", %{home: home} do
+    path = Path.join(home, ".pi/agent/settings.json")
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, "{ nope")
+    assert %{state: :unreadable, error: error} = Integrations.uninstall(:pi)
+    assert error =~ path
+    assert File.read!(path) == "{ nope"
+  end
+
+  test "pi: write failures are reported without a successful installation", %{home: home} do
+    File.write!(Path.join(home, ".pi"), "not a directory")
+    assert %{error: error} = Integrations.install(:pi)
+    assert is_binary(error)
+    assert File.read!(Path.join(home, ".pi")) == "not a directory"
+  end
+
+  test "pi: shared skills remain while another agent is installed", %{home: home} do
+    Integrations.install(:pi)
+    Integrations.install(:codex)
+    # Shared skills still count as a present entry under the existing health definition.
+    assert %{state: :partial, error: nil} = Integrations.uninstall(:pi)
+    settings = home |> Path.join(".pi/agent/settings.json") |> File.read!() |> Jason.decode!()
+    assert settings["packages"] == []
+    assert File.exists?(Path.join(home, ".agents/skills/specify/SKILL.md"))
+    assert %{state: :installed} = Integrations.status(:codex)
   end
 
   test "codex: install and uninstall leave the rest of config.toml byte for byte", %{home: home} do
@@ -111,6 +164,30 @@ defmodule Jarvis.IntegrationsTest do
     assert %{state: :not_installed} = Integrations.uninstall(:copilot)
     json = settings |> File.read!() |> Jason.decode!()
     assert json["hooks"] == %{"agentStop" => [%{"type" => "command", "bash" => "mine"}]}
+  end
+
+  test "copilot: migration replaces the ignored prompt hook and preserves unrelated hooks", %{
+    home: home
+  } do
+    settings = Path.join(home, ".copilot/settings.json")
+    Integrations.install(:copilot)
+    json = settings |> File.read!() |> Jason.decode!()
+    old = hd(json["hooks"]["userPromptTransformed"])
+
+    legacy =
+      json
+      |> put_in(["hooks", "userPromptSubmitted"], [old, %{"bash" => "mine"}])
+      |> put_in(["hooks", "notification"], [])
+
+    File.write!(settings, Jason.encode!(legacy))
+    Integrations.install(:copilot)
+    hooks = settings |> File.read!() |> Jason.decode!() |> Map.fetch!("hooks")
+    assert hooks["userPromptSubmitted"] == [%{"bash" => "mine"}]
+    assert length(hooks["userPromptTransformed"]) == 1
+    assert hooks["notification"] == []
+    Integrations.uninstall(:copilot)
+    remaining = settings |> File.read!() |> Jason.decode!() |> Map.fetch!("hooks")
+    assert remaining == %{"userPromptSubmitted" => [%{"bash" => "mine"}], "notification" => []}
   end
 
   test "an unparseable configuration is Unreadable, named, and untouched", %{home: home} do

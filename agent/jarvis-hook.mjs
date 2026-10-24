@@ -18,7 +18,13 @@ try {
 	input = JSON.parse(raw || "{}");
 } catch {}
 
-const sessionId = input.session_id ?? input.sessionId ?? `${agent}-${process.ppid}`;
+// Legacy userPromptSubmitted hooks ignore output. Never consume comments through that event.
+if (agent === "copilot" && event === "start" && typeof input.transformedPrompt !== "string") process.exit(0);
+
+const sessionId = input.session_id ?? input.sessionId ??
+	(agent === "copilot" ? process.env.COPILOT_AGENT_SESSION_ID : process.env.CODEX_THREAD_ID);
+// A process id is not a conversation id: missing identity must not create a phantom session.
+if (!sessionId) process.exit(0);
 const headers = {
 	"content-type": "application/json",
 	"x-jarvis-cwd": encodeURIComponent(input.cwd ?? process.cwd()),
@@ -26,17 +32,35 @@ const headers = {
 	"x-jarvis-agent": agent,
 };
 
+// The whole hook must finish before the harness's 10-second hook timeout.
+const deadline = AbortSignal.timeout(8_000);
 const post = async (method, path, body) => {
-	const response = await fetch(`${BASE_URL}/api${path}`, { method, headers, body: body && JSON.stringify(body), signal: AbortSignal.timeout(4000) });
+	const response = await fetch(`${BASE_URL}/api${path}`, {
+		method, headers, body: body && JSON.stringify(body),
+		signal: AbortSignal.any([deadline, AbortSignal.timeout(4_000)]),
+	});
+	if (!response.ok) throw new Error(`Jarvis ${response.status}`);
 	return response.json();
 };
 
 try {
 	if (event === "start") {
 		await post("PUT", "/session", { state: "working" });
-		const [inbox, wake] = [await post("POST", "/inbox"), await post("POST", "/wake")];
-		const text = [inbox.text, wake.text].filter(Boolean).join("\n\n");
-		if (text) console.log(text);
+		const comments = [];
+		for (const path of ["/inbox", "/wake"]) {
+			try {
+				const result = await post("POST", path);
+				if (result.text) comments.push(result.text);
+			} catch {
+				// Do not lose an already-taken comment if the other retrieval fails.
+			}
+		}
+		const text = comments.join("\n\n");
+		if (text) {
+			if (agent === "copilot") {
+				console.log(JSON.stringify({ modifiedTransformedPrompt: `${input.transformedPrompt}\n\n${text}` }));
+			} else console.log(text);
+		}
 	} else {
 		await post("PUT", "/session", { state: event === "end" ? "ended" : "idle" });
 	}

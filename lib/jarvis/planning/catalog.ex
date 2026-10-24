@@ -962,7 +962,8 @@ defmodule Jarvis.Planning.Catalog do
     do: %{
       "term" => "Listening session",
       "meaning" => "The live agent session that receives anchored comments for a goal or task.",
-      "limits" => "Codex and Copilot CLI sessions hear it at their next turn; only pi is woken."
+      "limits" =>
+        "Pi, Codex, and Copilot CLI sessions hear it at their next turn; no idle session is woken."
     }
 
   def example("decision"),
@@ -976,7 +977,7 @@ defmodule Jarvis.Planning.Catalog do
     do: %{
       "title" => "How a comment reaches the agent",
       "source" =>
-        "flowchart LR\n  H[Human] -->|comments on a part| J(Jarvis)\n  J -->|wakes within 5 s| A[Agent session]\n  A -->|updates widget| J\n  A -->|replies| J"
+        "flowchart LR\n  H[Human] -->|comments on a part| J(Jarvis)\n  J -->|delivers next turn| A[Agent session]\n  A -->|updates widget| J\n  A -->|replies| J"
     }
 
   def example("architecture"),
@@ -1025,8 +1026,9 @@ defmodule Jarvis.Planning.Catalog do
         },
         %{
           "id" => "s2",
-          "title" => "The agent wakes",
-          "narration" => "The extension polls the API and starts a turn.",
+          "title" => "The agent hears the comment",
+          "narration" =>
+            "At the start of its next turn, the listening session receives pending comments.",
           "nodes" => ["pi", "api"],
           "edges" => ["e2"]
         }

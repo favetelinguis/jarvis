@@ -133,7 +133,7 @@ defmodule JarvisWeb.TaskLiveTest do
       %{widget: widget!(scope, goal, task, "examples", "examples")}
     end
 
-    test "the human comments on a part; the thread appears at that part and the agent is woken",
+    test "the human comments on a part; the thread appears there for the next agent turn",
          %{conn: conn, scope: scope, widget: widget} do
       {:ok, view, _} = open(conn, scope)
       view |> element("#row-#{widget.id}-r2 button[phx-value-part='row:r2']") |> render_click()
@@ -147,7 +147,7 @@ defmodule JarvisWeb.TaskLiveTest do
       assert has_element?(
                view,
                "#thread-status-#{widget.id}-row\\:r2",
-               "The agent is being woken"
+               "Will be delivered at the session's next turn"
              )
 
       assert {:ok, [%{part: "row:r2", body: "Why rejected?"}]} = Planning.take_wake(scope)

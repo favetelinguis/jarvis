@@ -278,7 +278,7 @@ defmodule JarvisWeb.DesignSystemLive do
             ui: assigns.ui,
             comments: assigns.comments,
             composer: assigns.composer,
-            listening: true,
+            listening: :next_turn,
             sandbox: true,
             now: DateTime.utc_now()
           ),
@@ -337,8 +337,8 @@ defmodule JarvisWeb.DesignSystemLive do
                  "Through jarvis_widgets, from the catalog. Jarvis checks every field and draws it."},
                 {2, "You point at a part",
                  "Hover any widget or part and press the comment icon; the comment records exactly what you pointed at."},
-                {3, "The agent is woken",
-                 "Within 5 seconds the session working on the task receives your comment with the part's content."},
+                {3, "The agent hears you next turn",
+                 "At the start of its next turn, the session working on the task receives your comment with the part's content."},
                 {4, "It changes or answers",
                  "The widget updates live, or the agent replies in the thread right at that part."}
               ]

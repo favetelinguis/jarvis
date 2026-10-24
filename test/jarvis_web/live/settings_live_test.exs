@@ -64,6 +64,7 @@ defmodule JarvisWeb.SettingsLiveTest do
 
       view |> element("#install-pi") |> render_click()
       assert has_element?(view, "#integration-state-pi", "Installed")
+      assert has_element?(view, "#integration-activation-pi", "/reload")
       refute has_element?(view, "#uninstall-pi[disabled]")
 
       view |> element("#uninstall-pi") |> render_click()

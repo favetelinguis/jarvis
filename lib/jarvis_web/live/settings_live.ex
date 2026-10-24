@@ -276,6 +276,17 @@ defmodule JarvisWeb.SettingsLive do
               >
                 {row.error}
               </p>
+              <p
+                :if={row.state == :installed}
+                id={"integration-activation-#{row.agent}"}
+                class="mt-2 text-xs text-base-content/60"
+              >
+                <%= if row.agent == :pi do %>
+                  Run /reload in pi, or restart it, to activate MCP tools and next-turn comments.
+                <% else %>
+                  Restart {row.label} to activate updated tools and hooks.
+                <% end %>
+              </p>
               <div class="mt-2 flex gap-2">
                 <button
                   id={"install-#{row.agent}"}

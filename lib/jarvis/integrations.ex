@@ -193,7 +193,8 @@ defmodule Jarvis.Integrations do
   # settings.json; skills: the nine workflows in ~/.agents/skills, shared by all agents.
   defp present?(:pi, :package) do
     with {:ok, json} <- read_json(pi_settings()) do
-      {:ok, Enum.any?(json["packages"] || [], &(package_source(&1) == pi_package()))}
+      entries = Enum.filter(json["packages"] || [], &(package_source(&1) == pi_package()))
+      {:ok, entries == [pi_entry()]}
     end
   end
 
@@ -212,7 +213,9 @@ defmodule Jarvis.Integrations do
     with {:ok, json} <- read_json(copilot_settings()) do
       hooks = json["hooks"] || %{}
 
-      {:ok, Enum.all?(copilot_hooks(), fn {event, hook} -> hook in List.wrap(hooks[event]) end)}
+      {:ok,
+       Enum.all?(copilot_hooks(), fn {event, hook} -> hook in List.wrap(hooks[event]) end) and
+         without_jarvis(hooks["userPromptSubmitted"]) == List.wrap(hooks["userPromptSubmitted"])}
     end
   end
 
@@ -222,7 +225,9 @@ defmodule Jarvis.Integrations do
 
   defp add(:pi, :package) do
     update_json(pi_settings(), fn json ->
-      Map.update(json, "packages", [pi_package()], &(&1 ++ [pi_package()]))
+      Map.update(json, "packages", [pi_entry()], fn packages ->
+        Enum.reject(packages, &(package_source(&1) == pi_package())) ++ [pi_entry()]
+      end)
     end)
   end
 
@@ -243,8 +248,8 @@ defmodule Jarvis.Integrations do
   defp add(:copilot, :presence) do
     update_json(copilot_settings(), fn json ->
       hooks =
-        Enum.reduce(copilot_hooks(), json["hooks"] || %{}, fn {event, hook}, hooks ->
-          Map.put(hooks, event, without_jarvis(hooks[event]) ++ [hook])
+        Enum.reduce(copilot_hooks(), without_jarvis_hooks(json["hooks"] || %{}), fn
+          {event, hook}, hooks -> Map.put(hooks, event, List.wrap(hooks[event]) ++ [hook])
         end)
 
       Map.put(json, "hooks", hooks)
@@ -293,15 +298,7 @@ defmodule Jarvis.Integrations do
     update_json(copilot_settings(), fn json ->
       case json["hooks"] do
         %{} = hooks ->
-          hooks =
-            Enum.reduce(copilot_hooks(), hooks, fn {event, _}, hooks ->
-              case without_jarvis(hooks[event]) do
-                [] -> Map.delete(hooks, event)
-                rest -> Map.put(hooks, event, rest)
-              end
-            end)
-
-          Map.put(json, "hooks", hooks)
+          Map.put(json, "hooks", without_jarvis_hooks(hooks))
 
         _ ->
           json
@@ -324,6 +321,19 @@ defmodule Jarvis.Integrations do
         List.wrap(hooks),
         &(is_map(&1) and String.contains?(&1["bash"] || "", "jarvis-hook.mjs"))
       )
+
+  # Remove managed hooks from old event names too, while retaining the human's hooks.
+  defp without_jarvis_hooks(hooks) do
+    Enum.reduce(hooks, %{}, fn {event, entries}, acc ->
+      rest = without_jarvis(entries)
+
+      cond do
+        rest == List.wrap(entries) -> Map.put(acc, event, entries)
+        rest == [] -> acc
+        true -> Map.put(acc, event, rest)
+      end
+    end)
+  end
 
   defp package_source(%{"source" => source}), do: source
   defp package_source(source), do: source
@@ -503,7 +513,7 @@ defmodule Jarvis.Integrations do
 
   defp copilot_hooks do
     for {event, arg} <- [
-          {"userPromptSubmitted", "start"},
+          {"userPromptTransformed", "start"},
           {"agentStop", "stop"},
           {"sessionEnd", "end"}
         ] do
@@ -526,6 +536,9 @@ defmodule Jarvis.Integrations do
   defp bridge, do: Path.join([root(), "agent", "jarvis-mcp.mjs"])
   defp hook_script, do: Path.join([root(), "agent", "jarvis-hook.mjs"])
   defp pi_package, do: Path.join(root(), "pi")
+
+  # The explicit selection distinguishes migrated installs from the legacy native-tools package.
+  defp pi_entry, do: %{"source" => pi_package(), "extensions" => ["extensions/jarvis.ts"]}
   defp pi_settings, do: Path.join([home(), ".pi", "agent", "settings.json"])
   defp codex_config, do: Path.join([home(), ".codex", "config.toml"])
   defp copilot_mcp, do: Path.join([home(), ".copilot", "mcp-config.json"])

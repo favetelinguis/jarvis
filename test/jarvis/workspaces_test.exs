@@ -59,11 +59,28 @@ defmodule Jarvis.WorkspacesTest do
       assert {:error, %Ecto.Changeset{}} = Workspaces.register(%{"cwd" => repo, "agent" => "vim"})
     end
 
-    test "only pi sessions are woken; Codex and Copilot CLI hear comments at their next turn" do
+    test "all three agents hear comments at their next turn" do
       alias Jarvis.Workspaces.AgentSession
-      assert AgentSession.listening(%AgentSession{agent: :pi})
-      assert AgentSession.listening(%AgentSession{agent: :codex}) == :next_turn
+
+      for agent <- [:pi, :codex, :copilot] do
+        assert AgentSession.listening(%AgentSession{agent: agent}) == :next_turn
+      end
+
       assert AgentSession.listening(nil) == false
+    end
+
+    test "explicit conversation identities remain separate in the same worktree for every agent" do
+      repo = git_repo!()
+
+      for agent <- ~w(pi codex copilot) do
+        identity = %{"cwd" => repo, "agent" => agent, "session_id" => "#{agent}-one"}
+        {:ok, first} = Workspaces.register(identity)
+        {:ok, other} = Workspaces.register(%{identity | "session_id" => "#{agent}-two"})
+        {:ok, resumed} = Workspaces.register(identity)
+        assert first.agent_session.id != other.agent_session.id
+        assert resumed.agent_session.id == first.agent_session.id
+        assert first.worktree.id == other.worktree.id
+      end
     end
 
     test "registering the same session again updates it instead of adding one" do

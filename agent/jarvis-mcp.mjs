@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Jarvis board tools as an MCP server over stdio, for Codex and Copilot CLI.
+// Jarvis board tools as one MCP server over stdio, for pi, Codex, and Copilot CLI.
 // The agent starts it in the session's working directory; every call goes to
 // the Jarvis HTTP API with that directory, so the board is the one pi sees.
-// Usage: jarvis-mcp.mjs <codex|copilot>   (JARVIS_URL: default http://localhost:4000)
+// Usage: jarvis-mcp.mjs <pi|codex|copilot>   (JARVIS_URL: default http://localhost:4000)
 
 import { createInterface } from "node:readline";
 
@@ -26,7 +26,7 @@ const widgetOp = obj(
 	["op"],
 );
 
-// Keep descriptions in step with pi/extensions/jarvis.ts.
+// The single tool contract used by all three harnesses.
 const TOOLS = {
 	jarvis_read: {
 		description:
@@ -111,13 +111,28 @@ const TOOLS = {
 	},
 };
 
-async function call(name, args) {
+function sessionId(meta) {
+	// Codex supplies the caller per request, even when MCP connections are shared by threads.
+	if (AGENT === "codex") {
+		let turn = meta?.["x-codex-turn-metadata"];
+		if (typeof turn === "string") {
+			try { turn = JSON.parse(turn); } catch { turn = undefined; }
+		}
+		return meta?.threadId || turn?.thread_id || turn?.session_id || process.env.CODEX_THREAD_ID;
+	}
+	if (AGENT === "copilot") return process.env.COPILOT_AGENT_SESSION_ID;
+	if (AGENT === "pi") return process.env.JARVIS_SESSION_ID;
+}
+
+async function call(name, args, meta) {
 	const tool = TOOLS[name];
 	if (!tool) throw new Error(`unknown tool ${name}`);
 	for (const key of tool.schema.required) {
 		if (args[key] === undefined) throw new Error(`${key} is required`);
 	}
 	const [method, path, body] = tool.request(args);
+	const id = sessionId(meta);
+	if (typeof id !== "string" || !id) throw new Error("Jarvis session identity unavailable. Re-install Jarvis and reload or restart the agent; tool calls are never assigned to another session.");
 	let response;
 	try {
 		response = await fetch(`${BASE_URL}/api${path}`, {
@@ -126,6 +141,8 @@ async function call(name, args) {
 				"content-type": "application/json",
 				"x-jarvis-cwd": encodeURIComponent(process.cwd()),
 				"x-jarvis-agent": AGENT,
+				"x-jarvis-session": encodeURIComponent(id),
+				...(AGENT === "pi" && process.env.JARVIS_SESSION_NAME ? { "x-jarvis-session-name": encodeURIComponent(process.env.JARVIS_SESSION_NAME) } : {}),
 			},
 			body: body === undefined ? undefined : JSON.stringify(body),
 			signal: AbortSignal.timeout(5000),
@@ -135,11 +152,12 @@ async function call(name, args) {
 			`Jarvis server not reachable at ${BASE_URL} (${error.message}). Stop and ask the human to start it (mise run server in the jarvis repository).`,
 		);
 	}
-	const payload = await response.json().catch(() => ({}));
+	const payload = await response.json().catch(() => { throw new Error("Jarvis returned an invalid JSON response"); });
 	if (!response.ok) {
 		const details = payload.details ? ` ${JSON.stringify(payload.details)}` : "";
 		throw new Error(`Jarvis ${response.status}: ${payload.error ?? "request failed"}${details}`);
 	}
+	if (typeof payload?.text !== "string" || typeof payload?.url !== "string") throw new Error("Jarvis returned an invalid tool response");
 	return `${payload.text}\nWeb view: ${payload.url}`;
 }
 
@@ -165,7 +183,7 @@ async function handle(message) {
 			};
 		case "tools/call":
 			try {
-				return { content: [{ type: "text", text: await call(params.name, params.arguments ?? {}) }] };
+				return { content: [{ type: "text", text: await call(params.name, params.arguments ?? {}, params._meta) }] };
 			} catch (error) {
 				return { isError: true, content: [{ type: "text", text: error.message }] };
 			}

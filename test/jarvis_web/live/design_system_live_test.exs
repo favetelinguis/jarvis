@@ -31,7 +31,12 @@ defmodule JarvisWeb.DesignSystemLiveTest do
     view |> element("#question-#{id}") |> render_click()
     view |> form("#composer-#{id}", body: "Make it measurable") |> render_submit()
     assert has_element?(view, "#thread-#{id}-widget", "Make it measurable")
-    assert has_element?(view, "#thread-status-#{id}-widget", "The agent is being woken")
+
+    assert has_element?(
+             view,
+             "#thread-status-#{id}-widget",
+             "Will be delivered at the session's next turn"
+           )
 
     # The simulated agent (after its delay) answers, revises the card, and the confirmation is cleared.
     [asked | _] = :sys.get_state(view.pid).socket.assigns.comments

@@ -2,15 +2,13 @@
   "name": "jarvis-pi",
   "version": "0.1.0",
   "private": true,
-  "description": "pi package for Jarvis: live task board tools, and presence",
+  "description": "Jarvis shared MCP tools, presence, and next-turn comments for pi",
   "type": "module",
   "keywords": ["pi-package"],
   "pi": {
     "extensions": ["./extensions/jarvis.ts"]
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "*",
-    "@earendil-works/pi-coding-agent": "*",
-    "typebox": "*"
+    "@earendil-works/pi-coding-agent": "*"
   }
 }
