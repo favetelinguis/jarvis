@@ -33,10 +33,16 @@ defmodule Jarvis.Planning.Markdown do
     lines = Enum.map(tasks, &task_line(%{&1 | goal: goal}))
 
     Enum.join(
-      ["## #{Planning.ref(goal)}: #{goal.title} (#{done} of #{length(tasks)} done)" | lines],
+      [
+        "## #{Planning.ref(goal)}: #{goal.title}#{poc_tag(goal)} (#{done} of #{length(tasks)} done)"
+        | lines
+      ],
       "\n"
     )
   end
+
+  defp poc_tag(%Goal{poc: true}), do: " [POC, unreviewed]"
+  defp poc_tag(_), do: ""
 
   defp task_line(%Task{} = task) do
     worktree = task.worktree && "worktree #{Worktree.label(task.worktree)}"
@@ -58,7 +64,7 @@ defmodule Jarvis.Planning.Markdown do
     tasks = ["## Tasks\n\n" <> if(tasks == [], do: "No tasks yet.", else: Enum.join(tasks, "\n"))]
 
     join(
-      ["# #{Planning.ref(goal)}: #{goal.title}"] ++
+      ["# #{Planning.ref(goal)}: #{goal.title}#{poc_tag(goal)}"] ++
         sections(TaskType.sections(:goal), widgets) ++ tasks ++ comments(goal.comments)
     )
   end

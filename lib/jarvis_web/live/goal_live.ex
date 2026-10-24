@@ -31,6 +31,12 @@ defmodule JarvisWeb.GoalLive do
   def handle_event("widget:" <> _ = event, params, socket),
     do: JarvisWeb.WidgetEvents.handle(event, params, socket)
 
+  def handle_event("clear_poc", _params, socket) do
+    %{scope: scope, goal: goal} = socket.assigns
+    {:ok, _} = Planning.update_goal(scope, goal, %{"poc" => false})
+    {:noreply, socket}
+  end
+
   def handle_event("comment", %{"comment" => params}, socket) do
     %{scope: scope, goal: goal} = socket.assigns
 
@@ -97,6 +103,11 @@ defmodule JarvisWeb.GoalLive do
       <header class="mb-8">
         <p class="font-mono text-xs text-base-content/60">Goal {@goal.number}</p>
         <h1 class="mt-1 text-2xl font-semibold tracking-tight">{@goal.title}</h1>
+        <div :if={@goal.poc} id="goal-poc" class="mt-3 flex items-center gap-3">
+          <.poc_badge />
+          <span class="text-sm text-base-content/70">Not reviewed.</span>
+          <button id="clear-poc" phx-click="clear_poc" class="btn btn-xs">Mark reviewed</button>
+        </div>
       </header>
 
       <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">

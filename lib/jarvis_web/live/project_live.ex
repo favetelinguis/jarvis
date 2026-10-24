@@ -185,6 +185,7 @@ defmodule JarvisWeb.ProjectLive do
                 <h2 class="min-w-0 flex-1 truncate font-semibold group-hover:underline">
                   {goal.title}
                 </h2>
+                <.poc_badge :if={goal.poc} />
                 <.progress tasks={goal.tasks} />
               </.link>
               <ul class="divide-y divide-base-200 border-t border-base-200">

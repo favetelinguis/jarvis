@@ -97,19 +97,34 @@ defmodule Jarvis.Planning do
     |> notify(scope)
   end
 
-  @doc "Changes the title of a goal."
+  @doc """
+  Changes the title or POC status of a goal. An agent may set POC status but
+  never clear it: only the human says a goal has been reviewed.
+  """
   def update_goal(%Scope{} = scope, %Goal{} = goal, attrs) do
-    changeset = Goal.changeset(goal, attrs)
+    changeset = goal |> Goal.changeset(attrs) |> guard_poc(scope)
 
     Repo.transact(fn ->
       with {:ok, updated} <- Repo.update(changeset) do
-        if changeset.changes != %{},
+        if Map.has_key?(changeset.changes, :title),
           do: record!(scope, updated, nil, "#{ref(updated)}: renamed to #{updated.title}")
+
+        case changeset.changes do
+          %{poc: true} -> record!(scope, updated, nil, "#{ref(updated)}: marked POC")
+          %{poc: false} -> record!(scope, updated, nil, "#{ref(updated)}: POC status cleared")
+          _ -> :ok
+        end
 
         {:ok, updated}
       end
     end)
     |> notify(scope)
+  end
+
+  defp guard_poc(changeset, scope) do
+    if Scope.agent?(scope) and Ecto.Changeset.get_change(changeset, :poc) == false,
+      do: Ecto.Changeset.add_error(changeset, :poc, "only the human can clear POC status"),
+      else: changeset
   end
 
   ## Tasks

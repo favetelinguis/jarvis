@@ -647,6 +647,22 @@ defmodule Jarvis.PlanningTest do
     end
   end
 
+  describe "POC status" do
+    test "an agent sets it but only the human clears it", %{scope: scope} do
+      goal = goal!(scope)
+      refute goal.poc
+
+      assert {:ok, goal} = Planning.update_goal(scope, goal, %{"poc" => true})
+      assert goal.poc
+
+      assert {:error, changeset} = Planning.update_goal(scope, goal, %{"poc" => false})
+      assert %{poc: [_]} = errors_on(changeset)
+
+      assert {:ok, cleared} = Planning.update_goal(human_scope(scope), goal, %{"poc" => false})
+      refute cleared.poc
+    end
+  end
+
   test "changes are broadcast to the project's viewers", %{scope: scope} do
     Jarvis.Workspaces.subscribe(scope.project.id)
     goal!(scope)

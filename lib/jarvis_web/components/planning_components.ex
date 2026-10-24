@@ -36,6 +36,17 @@ defmodule JarvisWeb.PlanningComponents do
     """
   end
 
+  def poc_badge(assigns) do
+    ~H"""
+    <span
+      class="inline-flex items-center rounded-md bg-warning/20 px-1.5 py-0.5 text-[11px] font-semibold text-warning-content"
+      title="Built with /poc: requirements and code have not been reviewed"
+    >
+      POC
+    </span>
+    """
+  end
+
   attr :presence, :atom, required: true
 
   def presence_dot(assigns) do

@@ -12,6 +12,7 @@ defmodule Jarvis.Planning.Goal do
   schema "goals" do
     field :number, :integer
     field :title, :string
+    field :poc, :boolean, default: false
 
     belongs_to :project, Jarvis.Workspaces.Project
     has_many :tasks, Jarvis.Planning.Task, preload_order: [asc: :number]
@@ -21,7 +22,7 @@ defmodule Jarvis.Planning.Goal do
 
   def changeset(goal, attrs) do
     goal
-    |> cast(attrs, [:title], empty_values: [])
+    |> cast(attrs, [:title, :poc], empty_values: [])
     |> update_change(:title, &String.trim/1)
     |> validate_required([:title])
     |> validate_length(:title, max: 200)

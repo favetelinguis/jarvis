@@ -138,6 +138,7 @@ defmodule JarvisWeb.TaskLive do
           </p>
           <h1 class="mt-1 text-2xl font-semibold tracking-tight">{@task.title}</h1>
           <div class="mt-3 flex flex-wrap items-center gap-2">
+            <.poc_badge :if={@task.goal.poc} />
             <.type_badge type={@task.type} />
             <.step_badge step={@task.step} label={TaskType.step_label(@task.type, @task.step)} />
             <.worktree_chip worktree={@task.worktree} />

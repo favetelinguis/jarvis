@@ -44,7 +44,7 @@ const TOOLS = {
 	jarvis_goal_save: {
 		description:
 			"Create a goal (omit goal) or rename one (give goal). A goal's Intent, Scope, Glossary, and Decisions are widgets: write them with jarvis_widgets.",
-		schema: obj({ goal: int("Goal number to update; omit to create"), title: { type: "string", description: "Goal title; required when creating" } }),
+		schema: obj({ goal: int("Goal number to update; omit to create"), title: { type: "string", description: "Goal title; required when creating" }, poc: { type: "boolean", description: "true: mark the goal as built with /poc (unreviewed). Only the human can clear it." } }),
 		request: ({ goal, ...fields }) => (goal ? ["PATCH", `/goals/${goal}`, fields] : ["POST", "/goals", fields]),
 	},
 	jarvis_task_save: {
