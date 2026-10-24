@@ -1,0 +1,17 @@
+{
+  "name": "jarvis-pi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "pi package for Jarvis: live task board tools, workflow prompts, and session mirroring",
+  "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./extensions/jarvis.ts"],
+    "prompts": ["./prompts/*.md"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  }
+}

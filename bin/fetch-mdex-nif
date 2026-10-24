@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Downloads MDEx's precompiled NIF into the rustler_precompiled cache.
+#
+# rustler_precompiled downloads it with Erlang's :httpc, which fails on
+# OTP 29 against GitHub's release redirects ({:header_too_long, ...}).
+# curl does not, and a cached archive is used as is (checksums still apply).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+version=$(sed -n 's/.*"mdex_native": {:hex, :mdex_native, "\([^"]*\)".*/\1/p' mix.lock)
+nif=2.15
+case "$(uname -s)-$(uname -m)" in
+  Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
+  Linux-aarch64) target=aarch64-unknown-linux-gnu ;;
+  Darwin-arm64) target=aarch64-apple-darwin ;;
+  Darwin-x86_64) target=x86_64-apple-darwin ;;
+  *) echo "unsupported platform: $(uname -s)-$(uname -m)" >&2; exit 1 ;;
+esac
+
+case "$(uname -s)" in
+  Darwin) cache="$HOME/Library/Caches/rustler_precompiled/precompiled_nifs" ;;
+  *) cache="${XDG_CACHE_HOME:-$HOME/.cache}/rustler_precompiled/precompiled_nifs" ;;
+esac
+
+file="libmdex_native_nif-v${version}-nif-${nif}-${target}.so.tar.gz"
+mkdir -p "$cache"
+if [ ! -f "$cache/$file" ]; then
+  curl -fsSL -o "$cache/$file" "https://github.com/leandrocp/mdex_native/releases/download/v${version}/${file}"
+fi
+echo "MDEx NIF ready: $cache/$file"
