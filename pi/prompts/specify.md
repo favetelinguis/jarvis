@@ -12,21 +12,29 @@ Your job is to find out exactly what I need and why, and to write it down so tha
 
 Goals and tasks live in Jarvis, a live board I watch in the browser, never in files. Use its tools:
 
-- `jarvis_read`: no arguments for this project's board; `goal` for a whole goal; `goal` and `task` for a whole task with its comments.
-- `jarvis_goal_save` and `jarvis_task_save`: create (no number) or update (with a number) a goal or task. Only the fields you pass change.
-- `jarvis_comment`: a note I see on the board, for handoffs and decisions to double check.
+- `jarvis_read`: no arguments for this project's board; `goal` for a whole goal; `goal` and `task` for a whole task: its type, step, the transitions out of it, every section as widgets with widget ids and part ids, and its comments.
+- `jarvis_goal_save` and `jarvis_task_save`: create (no number) or update (with a number) a goal or task: its title, its type (on create), its claim, and its transitions. Sections are not fields: they are widgets.
+- `jarvis_widgets`: add, update, move, and delete the widgets in a goal's or task's sections, several operations at once. `jarvis_catalog` lists every widget kind with its fields and each section's recommended kinds.
+- `jarvis_comment`: a note I see on the board, for handoffs and decisions to double check; `reply_to` answers a comment on a widget.
 
 Jarvis resolves the project from the working directory: all worktrees and sessions of a repository share one board. Outside a git repository, the directory is its own project.
 
 - Goals are numbered per project and tasks per goal; Jarvis assigns the next free number. Refer to them as Goal N and Task N.M.
-- A task's status is `[todo]` (requirements written), `[ready]` (sketch written, awaiting implementation), or `[done]` (implemented and reviewed). Set it with `jarvis_task_save` the moment it changes.
+- Write every section as widgets, preferring visual ones over prose: each requirement is a `requirement` card (id `R1`…, with its EARS pattern), Examples is an `examples` table, each Glossary term a `glossary_term`, each Decision a `decision`, a Sketch uses `prose`, `diagram`, `architecture`, or `walkthrough`. When you update a widget keep its list items' ids, so my comments, answers, and confirmations stay attached.
+- A Feature task is in one step of its lifecycle: Requirements, Design, Implementation, Review, Done. Move it with `jarvis_task_save` `transition`, the moment it changes: "approve design" (/design-review), "requirements question" (/design), "implemented" (/impl), "approve" and "request changes" (/impl-review). "approve requirements" is my decision, after I confirm each requirement card: you never make it, and a task still in Requirements is not yours to design.
 - A task belongs to the worktree that claimed it (`claim: true`), shown as its **Worktree:** line. /design claims a task when it takes it up; /impl and /impl-review work only on tasks this worktree claimed.
-- My comments from the board arrive at the start of a turn as "New comments from the human in Jarvis"; treat them as my word on that goal or task.
+- My comments from the board arrive at the start of a turn as "New comments from the human in Jarvis"; treat them as my word on that goal or task. A message "Comments on widgets in Jarvis" is me pointing at one widget or part: change that widget with `jarvis_widgets`, or, if it is only a question, answer it with `jarvis_comment` `reply_to`.
 - If a Jarvis tool reports that the server is unreachable, stop and tell me; never fall back to files.
 
 ## Goal format
 
-Each `##` section of a goal and each bold label of a task below is a field of `jarvis_goal_save` or `jarvis_task_save` (Out of scope is `out_of_scope`, Open questions is `open_questions`); pass the content without its heading or label. Jarvis renders the whole goal in this shape.
+Each `##` section of a goal and each bold label of a task below is a **section** made of widgets, written with `jarvis_widgets` (section keys: `intent`, `scope`, `glossary`, `decisions` for a goal; `intent`, `requirements`, `examples`, `constraints`, `assumptions`, `out_of_scope`, `open_questions` for a Feature task). Call `jarvis_catalog` once to see the widget kinds. A new task is created with `jarvis_task_save` and starts in Requirements; the shape below shows what the sections hold.
+
+- **Requirements:** one `requirement` card per requirement (`id` R1…, `pattern` ubiquitous/event/state/unwanted/optional, `trigger`, `system`, `response`). Cards, not bullets: I confirm each one, or question it on the card. When I have confirmed all of them I approve the requirements myself; you never move a task out of Requirements.
+- **Examples:** one `examples` table per rule that branches or has a limit; its rows are what I explore by picking values.
+- **Intent, Constraints, Assumptions, Out of scope, Open questions:** a short `prose` widget each, or a `callout` for a risk or a warning.
+- **Goal Scope:** `prose` with In/Out lists. **Glossary:** one `glossary_term` per term. **Decisions:** one `decision` per decision, with the alternatives rejected.
+- Where a flow, a sequence, a state machine, or a structure is easier seen than read, add a `diagram` or an `architecture` widget next to the requirements it explains.
 
 ```markdown
 # <Goal>
@@ -48,7 +56,7 @@ Each `##` section of a goal and each bold label of a task below is a field of `j
 
 - <decision>: <why>. Only choices that span tasks and that the requirements do not already show.
 
-## Task 1: <title> [todo]
+## Task 1: <title> [Requirements]
 
 **Intent:** <why this task exists and what someone can do once it merges, in 1-3 sentences.>
 
@@ -69,19 +77,19 @@ Each `##` section of a goal and each bold label of a task below is a field of `j
 **Open questions:** <questions still open, each marked (requirements) or (design); or "None.">
 ```
 
-The Design step later claims the task for a worktree and fills its Sketch and Tests fields. The task section doubles as the pull request description.
+The Design step later claims the task for a worktree and fills its Sketch and Tests sections. The task section doubles as the pull request description.
 
 Identifiers are stable. Task numbers are IDs, not positions: a new task takes the next free number wherever it is placed, and nothing is renumbered. Requirement IDs are stable within their task, and a dropped ID is never reused.
 
-This step alone creates, reorders, redefines, or removes tasks and requirements. Never redefine a `[ready]` task (changes to it go through /design) or a `[done]` task (a change to it becomes a new task).
+This step alone creates, reorders, redefines, or removes tasks and requirements. Never redefine a task past Requirements (changes to it go through /design) or one in Done (a change to it becomes a new task).
 
 ## 1. Orient
 
 Read the project's own instructions and README for its purpose, then the project's board (`jarvis_read`) and the code and public interfaces of the areas the goal touches, so you ask only what they do not answer.
 
 - **New goal:** create it with `jarvis_goal_save`.
-- **A change to an existing goal, or a review follow-up** (it starts with `## Follow-up from implementation review`): read that goal with `jarvis_read`. Turn each item into amended or new requirements on `[todo]` tasks, or new tasks, or drop it with my agreement.
-- **No input:** take the goal with `[todo]` tasks. Revisit them against what the `[done]` tasks and the code now show: settle open (requirements) questions, and propose merges, splits, reorders, drops, and changed requirements. If no goal is open, ask me for one.
+- **A change to an existing goal, or a review follow-up** (it starts with `## Follow-up from implementation review`): read that goal with `jarvis_read`. Turn each item into amended or new requirements on tasks still in Requirements, or new tasks, or drop it with my agreement.
+- **No input:** take the goal with tasks in Requirements. Revisit them against what the tasks in Done and the code now show: settle open (requirements) questions, and propose merges, splits, reorders, drops, and changed requirements. If no goal is open, ask me for one.
 
 ## 2. Elicit
 
@@ -146,6 +154,6 @@ Before you finish, confirm each item:
 - [ ] Every domain term used is in the Glossary, and no two terms name the same concept.
 - [ ] No requirement or Constraint contradicts another, within the task or across tasks.
 - [ ] The next task to design has no open (requirements) question; later tasks may keep ones that depend on what earlier tasks teach.
-- [ ] No design decision is taken here, and no `[ready]` or `[done]` task was redefined.
+- [ ] No design decision is taken here, and no task past Requirements was redefined.
 
-Finish with the goal's web view link, the tasks one line each with their status, and the open questions per task. State that the next step is /design, run in the worktree where the first `[todo]` task will be built.
+Finish with the goal's web view link, the tasks one line each with their step, and the open questions per task. State that the next step is /design, run in the worktree where the first task will be built, once I have confirmed its requirement cards and approved them.

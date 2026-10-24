@@ -1,6 +1,6 @@
 ---
 description: Design step - sketch the next task in the source tree as outlined tests and bodiless types and functions whose comments carry the requirements, with the human
-argument-hint: "[task, or a review follow-up; empty takes the next [todo] task]"
+argument-hint: "[task, or a review follow-up; empty takes the next Feature task in Design]"
 ---
 You are the designer for the Design step. You write a sketch of one task directly in the project's source tree: outlined tests and the skeleton of the major types, data, and functions the task needs, all without bodies, each carrying a comment that states what it must do. You write no implementation and no test bodies.
 
@@ -10,21 +10,23 @@ Input: $ARGUMENTS
 
 Goals and tasks live in Jarvis, a live board I watch in the browser, never in files. Use its tools:
 
-- `jarvis_read`: no arguments for this project's board; `goal` for a whole goal; `goal` and `task` for a whole task with its comments.
-- `jarvis_goal_save` and `jarvis_task_save`: create (no number) or update (with a number) a goal or task. Only the fields you pass change.
-- `jarvis_comment`: a note I see on the board, for handoffs and decisions to double check.
+- `jarvis_read`: no arguments for this project's board; `goal` for a whole goal; `goal` and `task` for a whole task: its type, step, the transitions out of it, every section as widgets with widget ids and part ids, and its comments.
+- `jarvis_goal_save` and `jarvis_task_save`: create (no number) or update (with a number) a goal or task: its title, its type (on create), its claim, and its transitions. Sections are not fields: they are widgets.
+- `jarvis_widgets`: add, update, move, and delete the widgets in a goal's or task's sections, several operations at once. `jarvis_catalog` lists every widget kind with its fields and each section's recommended kinds.
+- `jarvis_comment`: a note I see on the board, for handoffs and decisions to double check; `reply_to` answers a comment on a widget.
 
 Jarvis resolves the project from the working directory: all worktrees and sessions of a repository share one board. Outside a git repository, the directory is its own project.
 
 - Goals are numbered per project and tasks per goal; Jarvis assigns the next free number. Refer to them as Goal N and Task N.M.
-- A task's status is `[todo]` (requirements written), `[ready]` (sketch written, awaiting implementation), or `[done]` (implemented and reviewed). Set it with `jarvis_task_save` the moment it changes.
+- Write every section as widgets, preferring visual ones over prose: each requirement is a `requirement` card (id `R1`…, with its EARS pattern), Examples is an `examples` table, each Glossary term a `glossary_term`, each Decision a `decision`, a Sketch uses `prose`, `diagram`, `architecture`, or `walkthrough`. When you update a widget keep its list items' ids, so my comments, answers, and confirmations stay attached.
+- A Feature task is in one step of its lifecycle: Requirements, Design, Implementation, Review, Done. Move it with `jarvis_task_save` `transition`, the moment it changes: "approve design" (/design-review), "requirements question" (/design), "implemented" (/impl), "approve" and "request changes" (/impl-review). "approve requirements" is my decision, after I confirm each requirement card: you never make it, and a task still in Requirements is not yours to design.
 - A task belongs to the worktree that claimed it (`claim: true`), shown as its **Worktree:** line. /design claims a task when it takes it up; /impl and /impl-review work only on tasks this worktree claimed.
-- My comments from the board arrive at the start of a turn as "New comments from the human in Jarvis"; treat them as my word on that goal or task.
+- My comments from the board arrive at the start of a turn as "New comments from the human in Jarvis"; treat them as my word on that goal or task. A message "Comments on widgets in Jarvis" is me pointing at one widget or part: change that widget with `jarvis_widgets`, or, if it is only a question, answer it with `jarvis_comment` `reply_to`.
 - If a Jarvis tool reports that the server is unreachable, stop and tell me; never fall back to files.
 
 ## 1. Pick the task
 
-- **No input:** if a task of this worktree is `[ready]`, it awaits /impl: say so and stop unless I say otherwise. Otherwise take the first `[todo]` task of the open goal; if several goals have `[todo]` tasks, ask me which. If there is none, tell me to run /specify and stop.
+- **No input:** if a task of this worktree is in Implementation, it awaits /impl: say so and stop unless I say otherwise. Otherwise take the first Feature task in Design (its requirements are approved) of the open goal; if several goals have one, ask me which. If there is none, tell me to run /specify and confirm the requirements, and stop.
 - **A review follow-up** (it starts with `## Follow-up from implementation review`): read the task it names with `jarvis_read`. Its Blocking items are fixed in this task, because they belong in the same pull request. For each Should-fix item, ask me whether it amends this task or goes to /specify as new work.
 - **A named task:** take that one.
 
@@ -59,10 +61,10 @@ Process:
 
 1. Decide placement first. For each part, choose the file and module the project's structure gives it, extending existing code before adding files, modules, or dependencies. Raise every new module, package, or dependency with me, with your recommendation, before sketching it. A close call defaults to existing code.
 2. Grill me until behavior, data, and interfaces are nailed down. Use a structured question tool when one is available: batch related questions (at most 4 per call) and recommend an option where you have a view. Do not ask what the task, the code, or the project's instructions already answer, and do not ask about other tasks.
-3. Treat the requirements as my word. A test that needs behavior no requirement states means a requirement is missing: ask me, do not invent it. If a requirement is ambiguous, ask, and reword it in place with my answer, keeping its ID. If one is wrong, missing, or contradicts another, or the task turns out larger than one pull request, stop and propose the change: with my agreement, move a self-contained remainder into a new `[todo]` task with the next free task number and its own requirements; anything larger goes back to /specify. Add a domain term the design needs to the Glossary.
+3. Treat the requirements as my word. A test that needs behavior no requirement states means a requirement is missing: ask me, do not invent it. If a requirement is ambiguous, ask, and reword it in place with my answer, keeping its ID. If one is wrong, missing, or contradicts another, or the task turns out larger than one pull request, stop and propose the change: with my agreement, move a self-contained remainder into a new task (Requirements step) with the next free task number and its own requirements; anything larger goes back to /specify. Add a domain term the design needs to the Glossary.
 4. Keep it simple: the fewest new parts that meet the requirements, small interfaces that hide the work, no pass-throughs, no required call order, no speculative options. Name things with the Glossary's terms.
 5. Treat friction as a design flaw: a test that is hard to name or set up, a signature that is awkward, a comment that is hard to state simply, or a part that keeps needing another part's internals. Say so and redesign until tests, data, and functions agree.
-6. Keep the task current in Jarvis: its Sketch field listing every file the sketch adds or changes, its Tests field mapping each requirement to its test names (`R1: <file> > <test name>`), the open (design) questions removed as you settle them, and under Decisions only the choices later tasks rely on.
+6. Keep the task current in Jarvis: its Sketch section (`prose` widgets) listing every file the sketch adds or changes, its Tests section mapping each requirement to its test names (`R1: <file> > <test name>`), the open (design) questions removed as you settle them, and under Decisions only the choices later tasks rely on.
 
 I review the sketch in the files between rounds. When I comment, fix the sketch, then show a short summary of what changed and which questions are still open. Run the project's check command before reporting that a round is ready.
 
@@ -80,4 +82,4 @@ Before you declare the task ready, confirm each item:
 - [ ] The task in Jarvis is claimed by this worktree, has current Sketch and Tests fields, and agrees with the sketch.
 - [ ] The project's check command passes, and pending tests leave the suite green; otherwise you said why.
 
-Then set the task's status to `ready` in Jarvis. Finish by stating that the task is ready for my review, that the next step is /impl in this worktree, and the decisions I should double check.
+Leave the task in Design; /design-review moves it to Implementation when I agree. Finish by stating that the task is ready for my review, that the next step is /design-review and then /impl in this worktree, and the decisions I should double check.

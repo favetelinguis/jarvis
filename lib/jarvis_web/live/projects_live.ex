@@ -32,7 +32,7 @@ defmodule JarvisWeb.ProjectsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} theme_css={@theme_css}>
       <div class="mb-8">
         <h1 class="text-2xl font-semibold tracking-tight">Projects</h1>
         <p class="mt-1 text-sm text-base-content/60">
@@ -74,11 +74,12 @@ defmodule JarvisWeb.ProjectsLive do
             </span>
           </div>
           <div class="mt-4 flex items-center gap-2">
-            <%= for status <- Jarvis.Planning.Task.statuses() do %>
-              <span class="inline-flex items-center gap-1 text-xs text-base-content/60">
-                <.status_badge status={status} /> {Map.get(row.counts, status, 0)}
-              </span>
-            <% end %>
+            <span class="inline-flex items-center gap-1 text-xs text-base-content/60">
+              <.step_badge step="open" label="open" /> {Map.get(row.counts, :open, 0)}
+            </span>
+            <span class="inline-flex items-center gap-1 text-xs text-base-content/60">
+              <.step_badge step="done" label="done" /> {Map.get(row.counts, :done, 0)}
+            </span>
             <span class="ml-auto text-xs text-base-content/40">
               <.time_ago at={row.project.updated_at} now={@now} />
             </span>

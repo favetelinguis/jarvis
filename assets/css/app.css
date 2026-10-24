@@ -5,6 +5,7 @@
 @import "phoenix-colocated/jarvis/colocated.css";
 @source "../css";
 @source "../js";
+@source "../../lib/jarvis";
 @source "../../lib/jarvis_web";
 /* Required for Tailwind to automatically pick up changes in colocated CSS files in dev */
 @source "../../_build/dev/phoenix-colocated/jarvis/*/";

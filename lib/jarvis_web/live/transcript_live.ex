@@ -77,6 +77,7 @@ defmodule JarvisWeb.TranscriptLive do
     ~H"""
     <Layouts.app
       flash={@flash}
+      theme_css={@theme_css}
       crumbs={[
         {@transcript.project.name, ~p"/projects/#{@transcript.project}"},
         {"Transcript", ~p"/transcripts/#{@transcript.id}"}

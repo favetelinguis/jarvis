@@ -19,7 +19,9 @@ defmodule JarvisWeb.Api.PlanningController do
 
   def show_goal(conn, %{"goal" => goal}) do
     with {:ok, goal} <- Planning.fetch_goal(conn.assigns.current_scope, int(goal)) do
-      reply(conn, Markdown.goal(goal), goal_path(goal), %{goal: goal.number})
+      reply(conn, Markdown.goal(goal, Planning.list_widgets(goal, nil)), goal_path(goal), %{
+        goal: goal.number
+      })
     end
   end
 
@@ -40,12 +42,30 @@ defmodule JarvisWeb.Api.PlanningController do
 
   def show_task(conn, %{"goal" => goal, "task" => task}) do
     with {:ok, task} <- Planning.fetch_task(conn.assigns.current_scope, int(goal), int(task)) do
-      reply(conn, Markdown.task(task), task_path(task), %{
+      widgets = Planning.list_widgets(task.goal, task)
+
+      reply(conn, Markdown.task(task, widgets), task_path(task), %{
         goal: task.goal.number,
         task: task.number
       })
     end
   end
+
+  def catalog(conn, _params), do: reply(conn, Markdown.catalog(), ~p"/design-system")
+
+  def widgets(conn, %{"goal" => goal_number, "ops" => ops} = params) do
+    scope = conn.assigns.current_scope
+
+    with {:ok, goal} <- Planning.fetch_goal(scope, int(goal_number)),
+         {:ok, task} <- fetch_optional_task(scope, goal, params["task"]),
+         {:ok, _ids} <- Planning.apply_widget_ops(scope, goal, task, ops) do
+      if task,
+        do: show_task(conn, %{"goal" => goal_number, "task" => task.number}),
+        else: show_goal(conn, %{"goal" => goal_number})
+    end
+  end
+
+  def widgets(_conn, _params), do: {:error, {:widgets, ["ops: required"]}}
 
   def create_task(conn, %{"goal" => number} = params) do
     scope = conn.assigns.current_scope
@@ -89,6 +109,13 @@ defmodule JarvisWeb.Api.PlanningController do
         conn
         |> put_status(:unprocessable_entity)
         |> json(%{error: "state must be idle, working, or ended"})
+    end
+  end
+
+  def wake(conn, _params) do
+    case Planning.take_wake(conn.assigns.current_scope) do
+      {:ok, []} -> json(conn, %{count: 0, text: nil})
+      {:ok, comments} -> json(conn, %{count: length(comments), text: Markdown.wake(comments)})
     end
   end
 

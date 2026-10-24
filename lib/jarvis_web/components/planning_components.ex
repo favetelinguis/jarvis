@@ -5,26 +5,33 @@ defmodule JarvisWeb.PlanningComponents do
 
   import JarvisWeb.CoreComponents, only: [icon: 1]
 
-  alias Jarvis.Planning.Task
+  alias Jarvis.Planning.TaskType
   alias Jarvis.Workspaces.{AgentSession, Worktree}
 
-  @status_styles %{
-    todo: "bg-base-200 text-base-content/70 ring-base-300",
-    ready: "bg-amber-500/10 text-amber-700 ring-amber-500/30 dark:text-amber-300",
-    done: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/30 dark:text-emerald-300"
-  }
+  attr :step, :string, required: true
+  attr :label, :string, default: nil
 
-  attr :status, :atom, required: true
-
-  def status_badge(assigns) do
-    assigns = assign(assigns, :style, Map.fetch!(@status_styles, assigns.status))
-
+  @doc "A task's lifecycle step; Done is green, everything else the primary color."
+  def step_badge(assigns) do
     ~H"""
     <span class={[
       "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset",
-      @style
+      if(@step == "done",
+        do: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/30 dark:text-emerald-300",
+        else: "bg-primary/10 text-primary ring-primary/30"
+      )
     ]}>
-      {@status}
+      {@label || @step}
+    </span>
+    """
+  end
+
+  attr :type, :atom, required: true
+
+  def type_badge(assigns) do
+    ~H"""
+    <span class="inline-flex items-center gap-1 rounded-md bg-base-200 px-1.5 py-0.5 text-[11px] font-medium text-base-content/70">
+      <.icon name={TaskType.icon(@type)} class="size-3" /> {TaskType.label(@type)}
     </span>
     """
   end
@@ -90,20 +97,6 @@ defmodule JarvisWeb.PlanningComponents do
     >
       <.icon name="hero-code-bracket-mini" class="size-3 shrink-0" />
       <span class="truncate">{@worktree.name}<span :if={@worktree.branch} class="text-base-content/40">@{@worktree.branch}</span></span>
-    </span>
-    """
-  end
-
-  attr :task, Task, required: true
-
-  def questions_badge(assigns) do
-    ~H"""
-    <span
-      :if={Task.open_questions?(@task)}
-      class="inline-flex items-center gap-1 rounded-md bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-700 dark:text-violet-300"
-      title="Has open questions"
-    >
-      <.icon name="hero-question-mark-circle-mini" class="size-3" /> questions
     </span>
     """
   end

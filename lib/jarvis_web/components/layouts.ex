@@ -32,14 +32,19 @@ defmodule JarvisWeb.Layouts do
     doc:
       "breadcrumbs after the home link, as `{label, path}` tuples; the last is the current page"
 
+  attr :theme_css, :string, default: nil, doc: "the theme derived from the brand colors"
+
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
+    <style :if={@theme_css} id="brand-theme">
+      <%= Phoenix.HTML.raw(@theme_css) %>
+    </style>
     <header class="sticky top-0 z-10 border-b border-base-300 bg-base-100/85 backdrop-blur">
       <div class="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
         <.link navigate={~p"/"} class="group flex items-center gap-2 font-semibold tracking-tight">
-          <span class="grid size-7 place-items-center rounded-lg bg-base-content text-base-100 transition group-hover:rotate-6">
+          <span class="grid size-7 place-items-center rounded-lg bg-primary text-primary-content transition group-hover:rotate-6">
             <.icon name="hero-cpu-chip" class="size-4" />
           </span>
           Jarvis
@@ -62,7 +67,21 @@ defmodule JarvisWeb.Layouts do
             </.link>
           <% end %>
         </nav>
-        <div class="ml-auto"><.theme_toggle /></div>
+        <div class="ml-auto flex items-center gap-3">
+          <.link
+            navigate={~p"/design-system"}
+            class="rounded px-2 py-1 text-sm text-base-content/70 transition hover:bg-base-200"
+          >
+            Design system
+          </.link>
+          <.link
+            navigate={~p"/settings"}
+            class="rounded px-2 py-1 text-sm text-base-content/70 transition hover:bg-base-200"
+          >
+            Settings
+          </.link>
+          <.theme_toggle />
+        </div>
       </div>
     </header>
 

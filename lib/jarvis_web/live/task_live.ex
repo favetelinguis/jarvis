@@ -1,13 +1,16 @@
 defmodule JarvisWeb.TaskLive do
   @moduledoc """
-  One task: its sections as the agent wrote them, its status and claim, the
-  sessions focused on it, and a thread where the human talks to those agents.
+  One task: its lifecycle as a graph with the moves out of the current step,
+  its sections as widgets the human can comment on, the sessions focused on
+  it, and a thread where the human talks to those agents.
   """
   use JarvisWeb, :live_view
 
   alias Jarvis.{Planning, Scope, Workspaces}
-  alias Jarvis.Planning.Task
+  alias Jarvis.Planning.{Comment, TaskType}
   alias Jarvis.Workspaces.AgentSession
+
+  import JarvisWeb.WidgetComponents
 
   @impl true
   def mount(%{"project" => project_id, "goal" => goal, "task" => task}, _session, socket) do
@@ -19,6 +22,8 @@ defmodule JarvisWeb.TaskLive do
     |> assign(:goal_number, String.to_integer(goal))
     |> assign(:task_number, String.to_integer(task))
     |> assign(:form, to_form(%{"body" => ""}, as: :comment))
+    |> assign(:ui, %{})
+    |> assign(:composer, nil)
     |> load()
   end
 
@@ -29,6 +34,9 @@ defmodule JarvisWeb.TaskLive do
   end
 
   @impl true
+  def handle_event("widget:" <> _ = event, params, socket),
+    do: JarvisWeb.WidgetEvents.handle(event, params, socket)
+
   def handle_event("comment", %{"comment" => params}, socket) do
     %{scope: scope, task: task} = socket.assigns
 
@@ -38,15 +46,15 @@ defmodule JarvisWeb.TaskLive do
     end
   end
 
-  def handle_event("set_status", %{"status" => status}, socket)
-      when status in ~w(todo ready done) do
-    update(socket, %{"status" => status})
+  def handle_event("move", %{"transition" => name}, socket) do
+    case Planning.move_task(socket.assigns.scope, socket.assigns.task, name) do
+      {:ok, _} -> {:noreply, socket}
+      {:error, _} -> {:noreply, put_flash(socket, :error, "That move is not allowed right now.")}
+    end
   end
 
-  def handle_event("release", _params, socket), do: update(socket, %{"claim" => false})
-
-  defp update(socket, attrs) do
-    case Planning.update_task(socket.assigns.scope, socket.assigns.task, attrs) do
+  def handle_event("release", _params, socket) do
+    case Planning.update_task(socket.assigns.scope, socket.assigns.task, %{"claim" => false}) do
       {:ok, _} -> {:noreply, socket}
       {:error, _} -> {:noreply, put_flash(socket, :error, "Could not update the task.")}
     end
@@ -58,15 +66,27 @@ defmodule JarvisWeb.TaskLive do
     case Planning.fetch_task(scope, goal, number) do
       {:ok, task} ->
         now = DateTime.utc_now()
+        widgets = Planning.list_widgets(task.goal, task)
+        {anchored, plain} = Enum.split_with(task.comments, &Comment.anchored?/1)
 
         focused =
           scope.project
           |> Workspaces.list_sessions()
           |> Enum.filter(&(&1.task_id == task.id and AgentSession.presence(&1, now) != :ended))
 
+        transitions =
+          for t <- TaskType.transitions_from(task.type, task.step),
+              do: %{t: t, unmet: Planning.unmet_conditions(task, t, widgets)}
+
         {:ok,
          socket
          |> assign(:task, task)
+         |> assign(:goal, task.goal)
+         |> assign(:widgets, widgets)
+         |> assign(:anchored, anchored)
+         |> assign(:plain, plain)
+         |> assign(:transitions, transitions)
+         |> assign(:listener, Planning.listening_session(scope.project, task.goal, task))
          |> assign(:focused, focused)
          |> assign(:now, now)
          |> assign(:page_title, "#{Planning.ref(task)}: #{task.title}")}
@@ -84,9 +104,26 @@ defmodule JarvisWeb.TaskLive do
   def render(%{task: nil} = assigns), do: ~H""
 
   def render(assigns) do
+    ids = MapSet.new(assigns.widgets, & &1.id)
+    {live, removed} = Enum.split_with(assigns.anchored, &(&1.widget_id in ids))
+
+    assigns =
+      assign(assigns,
+        removed: Enum.filter(removed, &(&1.widget_id == nil)),
+        ctx:
+          context(
+            ui: assigns.ui,
+            comments: live,
+            composer: assigns.composer,
+            listening: assigns.listener != nil,
+            now: assigns.now
+          )
+      )
+
     ~H"""
     <Layouts.app
       flash={@flash}
+      theme_css={@theme_css}
       crumbs={[
         {@scope.project.name, ~p"/projects/#{@scope.project}"},
         {"Goal #{@task.goal.number}", ~p"/projects/#{@scope.project}/goals/#{@task.goal.number}"},
@@ -94,78 +131,63 @@ defmodule JarvisWeb.TaskLive do
          ~p"/projects/#{@scope.project}/goals/#{@task.goal.number}/tasks/#{@task.number}"}
       ]}
     >
-      <header class="mb-8 flex flex-wrap items-start justify-between gap-4">
+      <header class="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div class="min-w-0">
-          <p class="font-mono text-xs text-base-content/40">
+          <p class="font-mono text-xs text-base-content/60">
             Task {@task.goal.number}.{@task.number} · {@task.goal.title}
           </p>
           <h1 class="mt-1 text-2xl font-semibold tracking-tight">{@task.title}</h1>
           <div class="mt-3 flex flex-wrap items-center gap-2">
-            <.status_badge status={@task.status} />
-            <.questions_badge task={@task} />
+            <.type_badge type={@task.type} />
+            <.step_badge step={@task.step} label={TaskType.step_label(@task.type, @task.step)} />
             <.worktree_chip worktree={@task.worktree} />
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
-          <div
-            id="status-switch"
-            class="inline-flex rounded-lg border border-base-300 bg-base-200 p-0.5"
-          >
-            <button
-              :for={status <- Task.statuses()}
-              id={"status-#{status}"}
-              type="button"
-              phx-click="set_status"
-              phx-value-status={status}
-              class={[
-                "rounded-md px-2.5 py-1 text-xs font-medium transition",
-                if(@task.status == status,
-                  do: "bg-base-100 shadow-sm",
-                  else: "text-base-content/60 hover:text-base-content"
-                )
-              ]}
-            >
-              {status}
-            </button>
-          </div>
-          <button
-            :if={@task.worktree}
-            id="release-claim"
-            type="button"
-            phx-click="release"
-            data-confirm="Release this task from its worktree?"
-            class="rounded-lg border border-base-300 px-2.5 py-1 text-xs font-medium text-base-content/70 transition hover:bg-base-200"
-          >
-            Release claim
-          </button>
-        </div>
+        <button
+          :if={@task.worktree}
+          id="release-claim"
+          type="button"
+          phx-click="release"
+          data-confirm="Release this task from its worktree?"
+          class="rounded-lg border border-base-300 px-2.5 py-1 text-xs font-medium text-base-content/70 transition hover:bg-base-200"
+        >
+          Release claim
+        </button>
       </header>
 
-      <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <article class="space-y-4">
-          <%= for {field, label} <- Task.sections(), text = Map.fetch!(@task, field), text not in [nil, ""] do %>
-            <.panel title={label} id={"task-#{field}"}>
-              <.markdown text={text} />
-            </.panel>
-          <% end %>
-          <p
-            :if={
-              Enum.all?(Task.sections(), fn {field, _} -> Map.fetch!(@task, field) in [nil, ""] end)
-            }
-            class="text-sm italic text-base-content/50"
-          >
-            Nothing written yet.
-          </p>
+      <.panel title="Lifecycle" id="task-lifecycle">
+        <.lifecycle
+          type={@task.type}
+          step={@task.step}
+          previous={@task.previous_step}
+          transitions={@transitions}
+        />
+      </.panel>
+
+      <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <article class="space-y-8">
+          <.sections sections={TaskType.sections(@task.type)} widgets={@widgets} ctx={@ctx} />
+          <.removed_anchors comments={@removed} />
         </article>
 
         <aside class="space-y-4">
+          <.panel title="Who hears your comments" id="task-listener">
+            <p :if={@listener} class="flex items-center gap-2 text-sm">
+              <.presence_dot presence={AgentSession.presence(@listener, @now)} />
+              {session_name(@listener)} is listening.
+            </p>
+            <p :if={!@listener} class="text-sm text-base-content/70">
+              No agent listening. Comments on widgets wait until a session takes up this task.
+            </p>
+          </.panel>
+
           <.panel :if={@focused != []} title="Focused here" id="task-sessions">
             <.session_list sessions={@focused} now={@now} />
           </.panel>
 
           <.panel title="Conversation" id="task-comments">
-            <.comment_thread comments={@task.comments} now={@now} />
+            <.comment_thread comments={@plain} now={@now} />
             <.comment_form form={@form} />
           </.panel>
         </aside>

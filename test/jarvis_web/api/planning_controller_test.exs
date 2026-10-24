@@ -21,26 +21,91 @@ defmodule JarvisWeb.Api.PlanningControllerTest do
     assert %{"details" => %{"cwd" => _}} = json_response(conn, 400)
   end
 
-  test "creates, updates, and reads a goal and its task", %{conn: conn} do
-    created =
-      conn |> post(~p"/api/goals", %{title: "Board", intent: "See agents"}) |> json_response(201)
-
+  test "creates a goal and a typed task, writes widgets, and moves the task", %{conn: conn} do
+    created = conn |> post(~p"/api/goals", %{title: "Board"}) |> json_response(201)
     assert %{"goal" => 1, "url" => url, "text" => text} = created
     assert url =~ ~r"/projects/\d+/goals/1$"
     assert text =~ "# Goal 1: Board"
+    assert text =~ "## Intent (`intent`)"
 
     task =
-      conn |> post(~p"/api/goals/1/tasks", %{title: "Show", claim: true}) |> json_response(201)
+      conn
+      |> post(~p"/api/goals/1/tasks", %{title: "Show", type: "research", claim: true})
+      |> json_response(201)
 
     assert %{"goal" => 1, "task" => 1} = task
     assert task["text"] =~ "**Worktree:**"
+    assert task["text"] =~ "**Type:** Research"
+    assert task["text"] =~ "**Step:** Question"
 
-    updated = conn |> patch(~p"/api/goals/1/tasks/1", %{status: "ready"}) |> json_response(200)
-    assert updated["text"] =~ "[ready]"
+    ops = [
+      %{op: "add", section: "question", kind: "prose", data: %{text: "Why is the sky blue?"}}
+    ]
+
+    written = conn |> post(~p"/api/goals/1/tasks/1/widgets", %{ops: ops}) |> json_response(200)
+    assert written["text"] =~ "· prose"
+    assert written["text"] =~ "Why is the sky blue?"
+
+    moved =
+      conn
+      |> patch(~p"/api/goals/1/tasks/1", %{transition: "approve question"})
+      |> json_response(422)
+
+    assert %{"details" => %{"transition" => ["This transition is the human's decision"]}} = moved
+
+    jumped =
+      conn
+      |> patch(~p"/api/goals/1/tasks/1", %{force_step: "investigation"})
+      |> json_response(200)
+
+    assert jumped["text"] =~ "**Step:** Investigation"
 
     overview = conn |> get(~p"/api/overview") |> json_response(200)
-    assert overview["text"] =~ "Task 1.1: Show [ready]"
+    assert overview["text"] =~ "Task 1.1: Show [Research · Investigation]"
     assert overview["text"] =~ "design run"
+  end
+
+  test "rejects invalid widgets with every reason and changes nothing", %{conn: conn} do
+    conn |> post(~p"/api/goals", %{title: "Board"}) |> json_response(201)
+    ops = [%{op: "add", section: "intent", kind: "callout", data: %{tone: "loud"}}]
+
+    assert %{"details" => %{"widgets" => messages}} =
+             conn |> post(~p"/api/goals/1/widgets", %{ops: ops}) |> json_response(422)
+
+    assert Enum.any?(messages, &(&1 =~ "tone: must be one of info, warning, risk"))
+    assert Enum.any?(messages, &(&1 =~ "title: required"))
+    assert %{"text" => text} = conn |> get(~p"/api/goals/1") |> json_response(200)
+    assert text =~ "_Nothing yet._"
+  end
+
+  test "serves the widget catalog", %{conn: conn} do
+    assert %{"text" => text} = conn |> get(~p"/api/catalog") |> json_response(200)
+    assert text =~ "### requirement — Requirement card"
+  end
+
+  test "wakes the listening session with anchored comments", %{conn: conn, repo: repo} do
+    conn |> post(~p"/api/goals", %{title: "Board"}) |> json_response(201)
+    conn |> post(~p"/api/goals/1/tasks", %{title: "Show", claim: true}) |> json_response(201)
+    ops = [%{op: "add", section: "intent", kind: "prose", data: %{text: "hello"}}]
+    conn |> post(~p"/api/goals/1/tasks/1/widgets", %{ops: ops}) |> json_response(200)
+    assert %{"count" => 0} = conn |> post(~p"/api/wake") |> json_response(200)
+
+    scope = agent_scope!(repo)
+    {:ok, task} = Jarvis.Planning.fetch_task(scope, 1, 1)
+    [widget] = Jarvis.Planning.list_widgets(task.goal, task)
+    attrs = %{"body" => "Shorter please", "widget" => widget.id}
+    {:ok, asked} = Jarvis.Planning.add_comment(human_scope(scope), task.goal, task, attrs)
+
+    assert %{"count" => 1, "text" => text} = conn |> post(~p"/api/wake") |> json_response(200)
+    assert text =~ "Shorter please"
+    assert %{"count" => 0} = conn |> post(~p"/api/wake") |> json_response(200)
+
+    reply =
+      conn
+      |> post(~p"/api/goals/1/comments", %{task: 1, body: "Done", reply_to: asked.id})
+      |> json_response(200)
+
+    assert reply["text"] =~ "**agent**"
   end
 
   test "reports unknown goals and invalid fields", %{conn: conn} do

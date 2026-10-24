@@ -18,12 +18,14 @@ defmodule JarvisWeb.Router do
   scope "/", JarvisWeb do
     pipe_through :browser
 
-    live_session :default do
+    live_session :default, on_mount: JarvisWeb.ThemeHook do
       live "/", ProjectsLive
       live "/projects/:project", ProjectLive
       live "/projects/:project/goals/:goal", GoalLive
       live "/projects/:project/goals/:goal/tasks/:task", TaskLive
       live "/transcripts/:id", TranscriptLive
+      live "/design-system", DesignSystemLive
+      live "/settings", SettingsLive
     end
   end
 
@@ -52,6 +54,10 @@ defmodule JarvisWeb.Router do
     get "/goals/:goal/tasks/:task", PlanningController, :show_task
     patch "/goals/:goal/tasks/:task", PlanningController, :update_task
     post "/goals/:goal/comments", PlanningController, :create_comment
+    post "/goals/:goal/widgets", PlanningController, :widgets
+    post "/goals/:goal/tasks/:task/widgets", PlanningController, :widgets
+    get "/catalog", PlanningController, :catalog
+    post "/wake", PlanningController, :wake
     put "/session", PlanningController, :update_session
     post "/inbox", PlanningController, :inbox
   end

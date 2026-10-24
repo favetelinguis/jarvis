@@ -6,9 +6,10 @@ defmodule JarvisWeb.ProjectLive do
   use JarvisWeb, :live_view
 
   alias Jarvis.{Planning, Scope, Transcripts, Workspaces}
+  alias Jarvis.Planning.TaskType
   alias Jarvis.Workspaces.AgentSession
 
-  @type filter :: :all | :unfinished | :todo | :ready | :done
+  @type filter :: %{unfinished: boolean(), type: TaskType.key() | nil, step: String.t() | nil}
 
   @tick_ms 20_000
 
@@ -27,7 +28,7 @@ defmodule JarvisWeb.ProjectLive do
      socket
      |> assign(:page_title, project.name)
      |> assign(:scope, Scope.for_human(project))
-     |> assign(:filter, :all)
+     |> assign(:filter, %{unfinished: false, type: nil, step: nil})
      |> load()}
   end
 
@@ -40,19 +41,29 @@ defmodule JarvisWeb.ProjectLive do
   @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   @impl true
-  def handle_event("filter", params, socket) do
-    filter =
-      case Map.get(params, "filter") do
-        "all" -> :all
-        "unfinished" -> :unfinished
-        "todo" -> :todo
-        "ready" -> :ready
-        "done" -> :done
-        _ -> socket.assigns.filter
-      end
+  def handle_event("filter", %{"filter" => "unfinished"}, socket),
+    do: {:noreply, socket |> update_filter(&%{&1 | unfinished: not &1.unfinished}) |> load()}
 
-    {:noreply, socket |> assign(:filter, filter) |> load()}
+  def handle_event("filter", _params, socket),
+    do:
+      {:noreply,
+       socket |> update_filter(fn _ -> %{unfinished: false, type: nil, step: nil} end) |> load()}
+
+  def handle_event("type", %{"type" => type}, socket) do
+    type = TaskType.parse(type)
+
+    {:noreply,
+     socket
+     |> update_filter(&%{&1 | type: if(&1.type == type, do: nil, else: type), step: nil})
+     |> load()}
   end
+
+  def handle_event("step", %{"step" => step}, socket) do
+    {:noreply,
+     socket |> update_filter(&%{&1 | step: if(&1.step == step, do: nil, else: step)}) |> load()}
+  end
+
+  defp update_filter(socket, fun), do: assign(socket, :filter, fun.(socket.assigns.filter))
 
   @spec load(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   defp load(socket) do
@@ -86,7 +97,11 @@ defmodule JarvisWeb.ProjectLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} crumbs={[{@scope.project.name, ~p"/projects/#{@scope.project}"}]}>
+    <Layouts.app
+      flash={@flash}
+      theme_css={@theme_css}
+      crumbs={[{@scope.project.name, ~p"/projects/#{@scope.project}"}]}
+    >
       <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div class="min-w-0">
           <h1 class="text-2xl font-semibold tracking-tight">{@scope.project.name}</h1>
@@ -100,33 +115,43 @@ defmodule JarvisWeb.ProjectLive do
             id="task-filter"
             role="group"
             aria-label="Filter tasks"
-            class="flex flex-wrap gap-1 rounded-xl border border-base-300 bg-base-200/50 p-1"
+            class="space-y-2 rounded-xl border border-base-300 bg-base-200/50 p-1"
           >
-            <button
-              :for={
-                {filter, label} <- [
-                  all: "All",
-                  unfinished: "Unfinished",
-                  todo: "Todo",
-                  ready: "Ready",
-                  done: "Done"
-                ]
-              }
-              id={"filter-#{filter}"}
-              type="button"
-              phx-click="filter"
-              phx-value-filter={filter}
-              aria-pressed={to_string(@filter == filter)}
-              class={[
-                "rounded-lg px-3 py-1.5 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-base-content",
-                if(@filter == filter,
-                  do: "bg-base-100 text-base-content shadow-sm",
-                  else: "text-base-content/60 hover:bg-base-100/60 hover:text-base-content"
-                )
-              ]}
-            >
-              {label}
-            </button>
+            <div class="flex flex-wrap gap-1">
+              <.filter_button
+                id="filter-all"
+                event="filter"
+                value={%{filter: "all"}}
+                active={@filter == %{unfinished: false, type: nil, step: nil}}
+              >All</.filter_button>
+              <.filter_button
+                id="filter-unfinished"
+                event="filter"
+                value={%{filter: "unfinished"}}
+                active={@filter.unfinished}
+              >Unfinished</.filter_button>
+              <span class="mx-1 w-px self-stretch bg-base-300" />
+              <.filter_button
+                :for={type <- TaskType.keys()}
+                id={"type-#{type}"}
+                event="type"
+                value={%{type: type}}
+                active={@filter.type == type}
+              >
+                {TaskType.label(type)}
+              </.filter_button>
+            </div>
+            <div :if={@filter.type} id="step-filter" class="flex flex-wrap gap-1">
+              <.filter_button
+                :for={{key, label, _} <- TaskType.steps(@filter.type)}
+                id={"step-#{key}"}
+                event="step"
+                value={%{step: key}}
+                active={@filter.step == key}
+              >
+                {label}
+              </.filter_button>
+            </div>
           </div>
 
           <div
@@ -172,14 +197,14 @@ defmodule JarvisWeb.ProjectLive do
                     <span class="w-10 font-mono text-xs text-base-content/40">
                       {goal.number}.{task.number}
                     </span>
-                    <.status_badge status={task.status} />
+                    <.type_badge type={task.type} />
+                    <.step_badge step={task.step} label={TaskType.step_label(task.type, task.step)} />
                     <span class={[
                       "min-w-0 flex-1 truncate text-sm",
-                      task.status == :done && "text-base-content/50"
+                      task.step == "done" && "text-base-content/50"
                     ]}>
                       {task.title}
                     </span>
-                    <.questions_badge task={task} />
                     <.worktree_chip worktree={task.worktree} />
                     <span
                       :for={session <- Map.get(@focus, task.id, [])}
@@ -259,33 +284,51 @@ defmodule JarvisWeb.ProjectLive do
   @spec matching_tasks(list(), filter()) :: list()
   defp matching_tasks(tasks, filter) do
     Enum.filter(tasks, fn task ->
-      case filter do
-        :all -> true
-        :unfinished -> task.status in [:todo, :ready]
-        status -> task.status == status
-      end
+      (not filter.unfinished or task.step != "done") and
+        (filter.type == nil or task.type == filter.type) and
+        (filter.step == nil or task.step == filter.step)
     end)
+  end
+
+  attr :id, :string, required: true
+  attr :event, :string, required: true
+  attr :value, :map, required: true
+  attr :active, :boolean, required: true
+  slot :inner_block, required: true
+
+  defp filter_button(assigns) do
+    ~H"""
+    <button
+      id={@id}
+      type="button"
+      phx-click={@event}
+      {for {k, v} <- @value, do: {:"phx-value-#{k}", v}}
+      aria-pressed={to_string(@active)}
+      class={[
+        "rounded-lg px-3 py-1.5 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        if(@active,
+          do: "bg-primary text-primary-content shadow-sm",
+          else: "text-base-content/70 hover:bg-base-100/60 hover:text-base-content"
+        )
+      ]}
+    >
+      {render_slot(@inner_block)}
+    </button>
+    """
   end
 
   attr :tasks, :list, required: true
 
   defp progress(assigns) do
-    counts = Enum.frequencies_by(assigns.tasks, & &1.status)
-    total = max(length(assigns.tasks), 1)
-    assigns = assign(assigns, counts: counts, total: total)
+    done = Enum.count(assigns.tasks, &(&1.step == "done"))
+    assigns = assign(assigns, done: done, total: max(length(assigns.tasks), 1))
 
     ~H"""
-    <div
-      class="flex items-center gap-2"
-      title={"#{Map.get(@counts, :done, 0)} of #{length(@tasks)} done"}
-    >
+    <div class="flex items-center gap-2" title={"#{@done} of #{length(@tasks)} done"}>
       <div class="flex h-1.5 w-24 overflow-hidden rounded-full bg-base-200">
-        <div class="bg-emerald-500" style={"width: #{Map.get(@counts, :done, 0) * 100 / @total}%"} />
-        <div class="bg-amber-400" style={"width: #{Map.get(@counts, :ready, 0) * 100 / @total}%"} />
+        <div class="bg-success" style={"width: #{@done * 100 / @total}%"} />
       </div>
-      <span class="font-mono text-xs text-base-content/50">
-        {Map.get(@counts, :done, 0)}/{length(@tasks)}
-      </span>
+      <span class="font-mono text-xs text-base-content/60">{@done}/{length(@tasks)}</span>
     </div>
     """
   end

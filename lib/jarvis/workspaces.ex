@@ -127,15 +127,15 @@ defmodule Jarvis.Workspaces do
 
   def get_project!(id), do: Repo.get!(Project, id)
 
-  @doc "All projects, most recently active first, with task counts and live session counts."
+  @doc "All projects, most recently active first, with open and done task counts and live session counts."
   def list_projects do
     task_counts =
       from(t in Jarvis.Planning.Task,
-        group_by: [t.project_id, t.status],
-        select: {t.project_id, t.status, count(t.id)}
+        group_by: [t.project_id, t.step == "done"],
+        select: {t.project_id, t.step == "done", count(t.id)}
       )
       |> Repo.all()
-      |> Enum.group_by(&elem(&1, 0), fn {_, status, n} -> {status, n} end)
+      |> Enum.group_by(&elem(&1, 0), fn {_, done, n} -> {if(done, do: :done, else: :open), n} end)
       |> Map.new(fn {id, counts} -> {id, Map.new(counts)} end)
 
     now = DateTime.utc_now()

@@ -5,6 +5,12 @@ defmodule JarvisWeb.Api.FallbackController do
     conn |> put_status(:not_found) |> json(%{error: "not found in this project"})
   end
 
+  def call(conn, {:error, {:widgets, messages}}) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> json(%{error: "invalid widgets; nothing was changed", details: %{widgets: messages}})
+  end
+
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
     conn
     |> put_status(:unprocessable_entity)

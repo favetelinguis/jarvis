@@ -42,4 +42,22 @@ defmodule Jarvis.Fixtures do
     {:ok, task} = Planning.create_task(scope, goal, Enum.into(attrs, %{"title" => "A task"}))
     task
   end
+
+  @doc "Adds one widget to a section of a goal (task `nil`) or task; returns it."
+  def widget!(scope, goal, task, section, kind, data \\ nil) do
+    data = data || Jarvis.Planning.Catalog.example(kind)
+
+    {:ok, [id]} =
+      Planning.apply_widget_ops(scope, goal, task, [
+        %{"op" => "add", "section" => section, "kind" => kind, "data" => data}
+      ])
+
+    {:ok, widget} = Planning.fetch_widget(scope, id)
+    widget
+  end
+
+  @doc "A requirement card's data."
+  def requirement(id, response \\ "do the thing") do
+    %{"id" => id, "pattern" => "ubiquitous", "system" => "board", "response" => response}
+  end
 end

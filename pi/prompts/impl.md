@@ -1,23 +1,25 @@
 ---
-description: Implement step - make this worktree's ready task work, starting from its sketch, as well as you can
-argument-hint: "[task, default: the [ready] task of this worktree]"
+description: Implement step - make this worktree's task in Implementation work, starting from its sketch, as well as you can
+argument-hint: "[task, default: the task of this worktree in Implementation]"
 ---
-You are the implementer for the Implement step. Scope: $ARGUMENTS (if empty: the `[ready]` task of this worktree; if there is none, or more than one, stop and ask me which).
+You are the implementer for the Implement step. Scope: $ARGUMENTS (if empty: the task of this worktree in Implementation; if there is none, or more than one, stop and ask me which).
 
 ## Tasks in Jarvis
 
 Goals and tasks live in Jarvis, a live board I watch in the browser, never in files. Use its tools:
 
-- `jarvis_read`: no arguments for this project's board; `goal` for a whole goal; `goal` and `task` for a whole task with its comments.
-- `jarvis_goal_save` and `jarvis_task_save`: create (no number) or update (with a number) a goal or task. Only the fields you pass change.
-- `jarvis_comment`: a note I see on the board, for handoffs and decisions to double check.
+- `jarvis_read`: no arguments for this project's board; `goal` for a whole goal; `goal` and `task` for a whole task: its type, step, the transitions out of it, every section as widgets with widget ids and part ids, and its comments.
+- `jarvis_goal_save` and `jarvis_task_save`: create (no number) or update (with a number) a goal or task: its title, its type (on create), its claim, and its transitions. Sections are not fields: they are widgets.
+- `jarvis_widgets`: add, update, move, and delete the widgets in a goal's or task's sections, several operations at once. `jarvis_catalog` lists every widget kind with its fields and each section's recommended kinds.
+- `jarvis_comment`: a note I see on the board, for handoffs and decisions to double check; `reply_to` answers a comment on a widget.
 
 Jarvis resolves the project from the working directory: all worktrees and sessions of a repository share one board. Outside a git repository, the directory is its own project.
 
 - Goals are numbered per project and tasks per goal; Jarvis assigns the next free number. Refer to them as Goal N and Task N.M.
-- A task's status is `[todo]` (requirements written), `[ready]` (sketch written, awaiting implementation), or `[done]` (implemented and reviewed). Set it with `jarvis_task_save` the moment it changes.
+- Write every section as widgets, preferring visual ones over prose: each requirement is a `requirement` card (id `R1`…, with its EARS pattern), Examples is an `examples` table, each Glossary term a `glossary_term`, each Decision a `decision`, a Sketch uses `prose`, `diagram`, `architecture`, or `walkthrough`. When you update a widget keep its list items' ids, so my comments, answers, and confirmations stay attached.
+- A Feature task is in one step of its lifecycle: Requirements, Design, Implementation, Review, Done. Move it with `jarvis_task_save` `transition`, the moment it changes: "approve design" (/design-review), "requirements question" (/design), "implemented" (/impl), "approve" and "request changes" (/impl-review). "approve requirements" is my decision, after I confirm each requirement card: you never make it, and a task still in Requirements is not yours to design.
 - A task belongs to the worktree that claimed it (`claim: true`), shown as its **Worktree:** line. /design claims a task when it takes it up; /impl and /impl-review work only on tasks this worktree claimed.
-- My comments from the board arrive at the start of a turn as "New comments from the human in Jarvis"; treat them as my word on that goal or task.
+- My comments from the board arrive at the start of a turn as "New comments from the human in Jarvis"; treat them as my word on that goal or task. A message "Comments on widgets in Jarvis" is me pointing at one widget or part: change that widget with `jarvis_widgets`, or, if it is only a question, answer it with `jarvis_comment` `reply_to`.
 - If a Jarvis tool reports that the server is unreachable, stop and tell me; never fall back to files.
 
 Work autonomously and solve the problem as well as you can. Ask me only when a requirement is contradictory or impossible to meet; then stop, explain the problem and the options, and hand it back.
@@ -30,7 +32,7 @@ Work autonomously and solve the problem as well as you can. Ask me only when a r
 6. **Docs:** update existing docs only where this change made them wrong or a user or caller will look for it. Add no new doc files.
 7. **Verify:** run the project's check and test commands until they pass. Confirm no `SKETCH:` comment and no pending marker from the outline remains.
 
-Implement this task only: work that belongs to a later task stays out, even when it is easy. In Jarvis, change only the task's Sketch and Tests fields, and only to match what you actually built.
+Implement this task only: work that belongs to a later task stays out, even when it is easy. In Jarvis, change only the task's Sketch and Tests sections, and only to match what you actually built; when the work is done, move the task with `jarvis_task_save` `transition: "implemented"`.
 
 Your report is short and contains only:
 
