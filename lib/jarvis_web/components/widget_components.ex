@@ -1423,6 +1423,338 @@ defmodule JarvisWeb.WidgetComponents do
     """
   end
 
+  defp body(%{w: %{kind: "discussion"}} = assigns) do
+    items = assigns.w.data["items"] || []
+    {open, rest} = Enum.split_with(items, &Catalog.open_item/1)
+    assigns = assign(assigns, open: open, rest: rest, items: items)
+
+    ~H"""
+    <div id={"discussion-#{@w.id}"} class="space-y-3 text-sm">
+      <p
+        :if={@w.data["status"] == "not_read"}
+        id={"discussion-#{@w.id}-not-read"}
+        class="rounded-xl border-l-4 border-warning bg-warning/10 px-3 py-2"
+      >
+        <span class="font-semibold">Discussion not read.</span> {@w.data["error"]}
+      </p>
+      <p
+        :if={@w.data["status"] == "read" and @items == []}
+        id={"discussion-#{@w.id}-none"}
+        class="italic text-base-content/60"
+      >
+        No existing discussion.
+      </p>
+      <.discussion_group
+        :if={@open != []}
+        id={"discussion-#{@w.id}-open"}
+        title="Unresolved and requested changes"
+        items={@open}
+        w={@w}
+        ctx={@ctx}
+      />
+      <.discussion_group
+        :if={@rest != []}
+        id={"discussion-#{@w.id}-rest"}
+        title="Resolved and other"
+        items={@rest}
+        w={@w}
+        ctx={@ctx}
+      />
+    </div>
+    """
+  end
+
+  defp body(%{w: %{kind: "round"}} = assigns) do
+    d = assigns.w.data
+
+    assigns =
+      assign(assigns,
+        d: d,
+        same?: d["head"] == d["previous_head"],
+        mine: assigns.w.human["statuses"] || %{}
+      )
+
+    ~H"""
+    <div id={"round-#{@w.id}"} class="space-y-3 text-sm">
+      <p class="font-semibold">
+        Round {@d["number"]}
+        <span class="ml-1 font-mono text-xs font-normal text-base-content/60">
+          {@d["previous_head"]} → {@d["head"]}
+        </span>
+      </p>
+      <p
+        :if={@same?}
+        id={"round-#{@w.id}-no-commits"}
+        class="rounded-xl bg-base-200/50 px-3 py-2 italic"
+      >
+        No new commits since the previous round; finding statuses are unchanged.
+      </p>
+      <ul :if={!@same?} class="space-y-1">
+        <li
+          :for={c <- @d["commits"] || []}
+          id={"commit-#{@w.id}-#{c["id"]}"}
+          class="group/part flex items-center gap-2"
+        >
+          <span class="font-mono text-xs">{c["sha"]}</span>
+          <span>{c["subject"]}</span>
+          <span class="ml-auto" />
+          <.part_button w={@w} part={"commit:#{c["id"]}"} ctx={@ctx} />
+        </li>
+      </ul>
+      <ul :if={!@same?} class="space-y-3">
+        <li
+          :for={s <- @d["statuses"] || []}
+          id={"status-#{@w.id}-#{s["id"]}"}
+          class="group/part rounded-xl bg-base-200/50 p-3"
+        >
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-mono text-xs">finding {s["finding"]}</span>
+            <span class={[
+              "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
+              case s["status"] do
+                "resolved" -> "bg-success text-success-content"
+                "open" -> "bg-warning text-warning-content"
+                _ -> "bg-error text-error-content"
+              end
+            ]}>
+              {if s["status"] == "location_gone", do: "location gone", else: s["status"]}
+            </span>
+            <span class="font-mono text-xs text-base-content/60">
+              {if s["status"] == "location_gone", do: "was " <> s["old_location"], else: s["location"]}
+            </span>
+            <span class="ml-auto" />
+            <.part_button w={@w} part={"status:#{s["id"]}"} ctx={@ctx} />
+          </div>
+          <.markdown text={s["reason"]} class="mt-2 text-sm" />
+          <div
+            class="mt-3 flex items-center gap-1.5"
+            role="group"
+            aria-label={"Your status for #{s["finding"]}"}
+          >
+            <span class="mr-1 text-xs text-base-content/60">
+              {if @mine[s["id"]], do: "Your status:", else: "Not confirmed:"}
+            </span>
+            <button
+              :for={v <- ~w(resolved open)}
+              type="button"
+              id={"status-#{@w.id}-#{s["id"]}-#{v}"}
+              phx-click="widget:action"
+              phx-value-widget={@w.id}
+              phx-value-action="status"
+              phx-value-id={s["id"]}
+              phx-value-value={v}
+              aria-pressed={to_string(@mine[s["id"]] == v)}
+              class={[
+                "rounded-lg px-2.5 py-1 text-xs font-medium capitalize transition",
+                if(@mine[s["id"]] == v,
+                  do: "bg-primary text-primary-content",
+                  else: "border border-base-300 hover:bg-base-100"
+                )
+              ]}
+            >
+              {v}
+            </button>
+          </div>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  defp body(%{w: %{kind: "draft_comments"}} = assigns) do
+    d = assigns.w.data
+    h = assigns.w.human
+    decisions = h["decisions"] || %{}
+    approved = Catalog.approved_drafts(d, h)
+
+    assigns =
+      assign(assigns,
+        d: d,
+        decisions: decisions,
+        verdict: h["verdict"],
+        stale?: Catalog.stale?(d),
+        can_post?: approved != [] and h["verdict"] != nil,
+        approved_count: length(approved)
+      )
+
+    ~H"""
+    <div id={"drafts-#{@w.id}"} class="space-y-3 text-sm">
+      <p
+        :if={@stale?}
+        id={"drafts-#{@w.id}-stale"}
+        class="rounded-xl border-l-4 border-warning bg-warning/10 px-3 py-2"
+      >
+        The pull request head moved from <span class="font-mono">{@d["head"]}</span>
+        to <span class="font-mono">{@d["current_head"]}</span>: these comments are possibly out of date.
+      </p>
+      <ul class="space-y-4">
+        <li
+          :for={c <- @d["comments"]}
+          id={"draft-#{@w.id}-#{c["id"]}"}
+          class="group/part rounded-xl bg-base-200/50 p-3"
+        >
+          <% anchored? = Catalog.anchored?(c) %>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-mono text-xs">{c["path"]}:{c["line"]}</span>
+            <span
+              :if={c["posted_url"]}
+              class="rounded-full bg-success px-2 py-0.5 text-[10px] font-bold uppercase text-success-content"
+            >posted</span>
+            <span
+              :if={!c["posted_url"] and @stale?}
+              class="rounded-full bg-warning px-2 py-0.5 text-[10px] font-bold uppercase text-warning-content"
+            >possibly out of date</span>
+            <span
+              :if={!anchored?}
+              id={"draft-#{@w.id}-#{c["id"]}-flag"}
+              class="rounded-full bg-error px-2 py-0.5 text-[10px] font-bold uppercase text-error-content"
+            >line not in the diff</span>
+            <span class="ml-auto" />
+            <.part_button w={@w} part={"anchor:#{c["id"]}"} ctx={@ctx} />
+          </div>
+          <pre class="mt-2 overflow-x-auto rounded-lg bg-base-100 py-1 font-mono text-[11px] leading-relaxed"><span
+              :for={l <- Catalog.hunk_lines(c["hunk"])}
+              class={[
+                "block whitespace-pre px-2",
+                l.kind == :add && "bg-success/10",
+                l.kind == :del && "bg-error/10",
+                marked?(l, c) && "border-l-4 border-primary bg-primary/20 font-bold"
+              ]}
+              data-marked={to_string(marked?(l, c))}
+            >{l.text}</span></pre>
+          <div class="group/part mt-2 flex items-start gap-2 rounded-lg border border-base-300 bg-base-100 p-2">
+            <.markdown text={c["body"]} class="flex-1 text-sm" />
+            <.part_button w={@w} part={"comment:#{c["id"]}"} ctx={@ctx} />
+          </div>
+          <div
+            :if={!c["posted_url"]}
+            class="mt-3 flex items-center gap-1.5"
+            role="group"
+            aria-label={"Decide on draft #{c["id"]}"}
+          >
+            <button
+              :for={
+                {action, label, state} <- [
+                  {"approve", "Approve", "approved"},
+                  {"drop", "Drop", "dropped"}
+                ]
+              }
+              type="button"
+              id={"draft-#{@w.id}-#{c["id"]}-#{action}"}
+              phx-click="widget:action"
+              phx-value-widget={@w.id}
+              phx-value-action={action}
+              phx-value-comment={c["id"]}
+              disabled={action == "approve" and !anchored?}
+              aria-pressed={to_string(@decisions[c["id"]] == state)}
+              class={[
+                "rounded-lg px-2.5 py-1 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-40",
+                if(@decisions[c["id"]] == state,
+                  do: "bg-primary text-primary-content",
+                  else: "border border-base-300 hover:bg-base-100"
+                )
+              ]}
+            >
+              {label}
+            </button>
+          </div>
+          <a
+            :if={c["posted_url"]}
+            href={c["posted_url"]}
+            target="_blank"
+            rel="noopener noreferrer"
+            id={"draft-#{@w.id}-#{c["id"]}-link"}
+            class="mt-2 inline-block text-xs text-primary underline"
+          >View on the code host</a>
+        </li>
+      </ul>
+      <div class="group/part flex flex-wrap items-center gap-2 border-t border-base-200 pt-3">
+        <span class="text-xs font-semibold uppercase tracking-wide text-base-content/60">Verdict</span>
+        <button
+          :for={v <- Catalog.verdicts()}
+          type="button"
+          id={"verdict-#{@w.id}-#{v}"}
+          phx-click="widget:action"
+          phx-value-widget={@w.id}
+          phx-value-action="verdict"
+          phx-value-value={v}
+          aria-pressed={to_string(@verdict == v)}
+          class={[
+            "rounded-lg px-2.5 py-1 text-xs font-medium transition",
+            if(@verdict == v,
+              do: "bg-primary text-primary-content",
+              else: "border border-base-300 hover:bg-base-100"
+            )
+          ]}
+        >
+          {String.replace(v, "_", " ")}
+        </button>
+        <.part_button w={@w} part="verdict" ctx={@ctx} />
+        <span class="ml-auto" />
+        <button
+          type="button"
+          id={"drafts-#{@w.id}-post"}
+          phx-click="widget:action"
+          phx-value-widget={@w.id}
+          phx-value-action="post"
+          disabled={!@can_post?}
+          class="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-content transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Post {@approved_count} approved
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  defp marked?(l, c) do
+    key = if c["side"] == "LEFT", do: :old, else: :new
+    Map.get(l, key) == String.to_integer(c["line"])
+  end
+
+  attr :id, :string, required: true
+  attr :title, :string, required: true
+  attr :items, :list, required: true
+  attr :w, :map, required: true
+  attr :ctx, :map, required: true
+
+  defp discussion_group(assigns) do
+    ~H"""
+    <div id={@id}>
+      <h3 class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-base-content/60">
+        {@title}
+      </h3>
+      <ul class="space-y-2">
+        <li
+          :for={i <- @items}
+          id={"item-#{@w.id}-#{i["id"]}"}
+          class="group/part rounded-xl bg-base-200/50 p-3"
+        >
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="font-medium">{i["author"]}</span>
+            <span class="text-xs text-base-content/60">{String.replace(i["type"], "_", " ")}</span>
+            <span
+              :if={i["state"]}
+              class="rounded-full bg-base-300 px-2 py-0.5 text-[10px] font-bold uppercase"
+            >
+              {String.replace(i["state"], "_", " ")}
+            </span>
+            <span :if={i["path"]} class="font-mono text-xs">{i["path"]}<span :if={i["line"]}>:{i[
+              "line"
+            ]}</span></span>
+            <span :if={i["type"] == "thread"} class="text-xs text-base-content/60">
+              {if i["resolved"] == true, do: "resolved", else: "unresolved"}
+            </span>
+            <span class="ml-auto" />
+            <.part_button w={@w} part={"item:#{i["id"]}"} ctx={@ctx} />
+          </div>
+          <.markdown :if={i["body"]} text={i["body"]} class="mt-1 text-sm" />
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
   ## Lifecycle
 
   attr :type, :atom, required: true

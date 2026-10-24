@@ -18,6 +18,10 @@ defmodule Jarvis.Planning.Catalog do
   @severities ~w(blocker major minor nit)
   @marks ~w(agree disagree fixed)
   @quiz_modes ~w(self_study feedback gate)
+  @item_types ~w(conversation thread review)
+  @review_states ~w(approved changes_requested commented)
+  @finding_statuses ~w(resolved open location_gone)
+  @verdicts ~w(approve request_changes comment)
 
   @kinds [
     {"prose", "Prose", "Markdown text, for what no other widget kind expresses better.",
@@ -170,6 +174,59 @@ defmodule Jarvis.Planning.Catalog do
            {"explanation", :text, required: true},
            {"suggestion", :text, []}
          ]}, required: true}
+     ]},
+    {"discussion", "Existing PR discussion",
+     "What others already said on a pull request: conversation comments, inline threads, and review verdicts. status not_read (with the error) means it could not be read, which is not the same as no discussion. Unresolved threads and requested changes are shown apart from the rest.",
+     [
+       {"status", {:enum, ~w(read not_read)}, required: true},
+       {"error", :text, doc: "What failed; required when status is not_read"},
+       {"items",
+        {:list, "item",
+         [
+           {"type", {:enum, @item_types}, required: true},
+           {"author", :string, required: true},
+           {"body", :text, []},
+           {"path", :string, doc: "Inline threads: file"},
+           {"line", :string, doc: "Inline threads: line"},
+           {"resolved", :bool, doc: "Inline threads: resolved on the code host"},
+           {"state", {:enum, @review_states}, doc: "Reviews: the verdict"},
+           {"url", :string, []}
+         ]}, []}
+     ]},
+    {"round", "Review round",
+     "One re-review round: the head commit reviewed, what changed since the previous round, and a proposed status for each earlier finding. The human confirms or changes each status. When head equals previous_head, there are no new commits: leave commits and statuses empty.",
+     [
+       {"number", {:int, 2, 99}, required: true},
+       {"head", :string, required: true, doc: "Pull request head commit reviewed"},
+       {"previous_head", :string, required: true, doc: "Head commit of the previous round"},
+       {"commits",
+        {:list, "commit", [{"sha", :string, required: true}, {"subject", :string, []}]}, []},
+       {"statuses",
+        {:list, "status",
+         [
+           {"finding", :string, required: true, doc: "Id of the earlier finding"},
+           {"status", {:enum, @finding_statuses}, required: true},
+           {"reason", :text, required: true},
+           {"location", :string, doc: "path:line in the new code"},
+           {"old_location", :string, doc: "Required when status is location_gone"}
+         ]}, []}
+     ]},
+    {"draft_comments", "Draft review comments",
+     "Review comments proposed for the code host, each on the diff hunk it attaches to. The human approves or drops each and chooses the verdict; nothing is posted before that. hunk is a unified diff hunk starting with its @@ header; line is a line number on side RIGHT (new file, default) or LEFT (old file) that must appear in the hunk. After posting, set posted_url on each posted comment.",
+     [
+       {"head", :string,
+        required: true, doc: "Pull request head commit the drafts were made against"},
+       {"current_head", :string, doc: "Set when the head has since moved"},
+       {"comments",
+        {:list, "c",
+         [
+           {"path", :string, required: true},
+           {"line", :string, required: true},
+           {"side", {:enum, ~w(RIGHT LEFT)}, []},
+           {"hunk", :text, required: true},
+           {"body", :text, required: true, doc: "The comment text exactly as it will be posted"},
+           {"posted_url", :string, []}
+         ]}, required: true}
      ]}
   ]
 
@@ -180,6 +237,8 @@ defmodule Jarvis.Planning.Catalog do
   def node_kinds, do: @node_kinds
   def severities, do: @severities
   def marks, do: @marks
+  def verdicts, do: @verdicts
+  def finding_statuses, do: @finding_statuses
 
   def kind?(kind), do: kind in @kind_names
 
@@ -426,6 +485,48 @@ defmodule Jarvis.Planning.Catalog do
     end
   end
 
+  defp check("discussion", d) do
+    cond do
+      d["status"] == "not_read" and blank?(d["error"]) ->
+        ["error: required when not_read"]
+
+      d["status"] == "not_read" and (d["items"] || []) != [] ->
+        ["items: must be empty when not_read"]
+
+      true ->
+        []
+    end
+  end
+
+  defp check("round", d) do
+    same? = d["head"] == d["previous_head"]
+    statuses = d["statuses"] || []
+
+    same_errors =
+      if same? and (statuses != [] or (d["commits"] || []) != []),
+        do: ["statuses, commits: must be empty when head equals previous_head (no new commits)"],
+        else: []
+
+    gone_errors =
+      for s <- statuses, s["status"] == "location_gone", blank?(s["old_location"]) do
+        "statuses[#{s["id"]}].old_location: required when location_gone"
+      end
+
+    same_errors ++ gone_errors
+  end
+
+  defp check("draft_comments", d) do
+    Enum.flat_map(d["comments"], fn c ->
+      p = "comments[#{c["id"]}]"
+
+      cond do
+        not String.match?(c["line"], ~r/^\d+$/) -> ["#{p}.line: must be a line number"]
+        hunk_lines(c["hunk"]) == [] -> ["#{p}.hunk: must start with a @@ -a,b +c,d @@ header"]
+        true -> []
+      end
+    end)
+  end
+
   defp check(_kind, _data), do: []
 
   defp ids(nil), do: []
@@ -497,6 +598,32 @@ defmodule Jarvis.Planning.Catalog do
       {"finding:#{f["id"]}", "Finding #{f["id"]} (#{f["severity"]})",
        "#{f["path"]}#{if f["line"], do: ":#{f["line"]}"} #{f["explanation"]}"}
     end
+  end
+
+  def parts("discussion", d) do
+    for i <- d["items"] || [] do
+      {"item:#{i["id"]}", "#{i["type"]} by #{i["author"]}", item_text(i)}
+    end
+  end
+
+  def parts("round", d) do
+    Enum.map(
+      d["commits"] || [],
+      &{"commit:#{&1["id"]}", "Commit #{&1["sha"]}", &1["subject"] || &1["sha"]}
+    ) ++
+      Enum.map(d["statuses"] || [], fn s ->
+        {"status:#{s["id"]}", "Status of finding #{s["finding"]}",
+         "#{s["finding"]} #{s["status"]}: #{s["reason"]}"}
+      end)
+  end
+
+  def parts("draft_comments", d) do
+    Enum.flat_map(d["comments"], fn c ->
+      [
+        {"comment:#{c["id"]}", "Draft comment #{c["id"]}", c["body"]},
+        {"anchor:#{c["id"]}", "Anchor of #{c["id"]}", "#{c["path"]}:#{c["line"]}"}
+      ]
+    end) ++ [{"verdict", "Verdict", "The verdict of the review"}]
   end
 
   def parts(_kind, _data), do: []
@@ -687,6 +814,125 @@ defmodule Jarvis.Planning.Catalog do
     end)
   end
 
+  def body_text(%{kind: "discussion", data: d}) do
+    items = d["items"] || []
+
+    cond do
+      d["status"] == "not_read" ->
+        "Discussion NOT READ: #{d["error"]}"
+
+      items == [] ->
+        "No existing discussion."
+
+      true ->
+        {open, rest} = Enum.split_with(items, &open_item?/1)
+
+        Enum.join(
+          ["Unresolved and requested changes:"] ++
+            Enum.map(open, &"- item:#{&1["id"]} #{item_text(&1)}") ++
+            ["Other:"] ++ Enum.map(rest, &"- item:#{&1["id"]} #{item_text(&1)}"),
+          "\n"
+        )
+    end
+  end
+
+  def body_text(%{kind: "round", data: d, human: h}) do
+    head = "**Round #{d["number"]}** reviewed #{d["head"]} (previous #{d["previous_head"]})"
+
+    if d["head"] == d["previous_head"] do
+      head <> "\nNo new commits; finding statuses unchanged."
+    else
+      human = h["statuses"] || %{}
+
+      commits =
+        Enum.map(d["commits"] || [], &"- commit:#{&1["id"]} #{&1["sha"]} #{&1["subject"]}")
+
+      statuses =
+        Enum.map(d["statuses"] || [], fn s ->
+          where =
+            if s["status"] == "location_gone",
+              do: " (location gone, was #{s["old_location"]})",
+              else: if(s["location"], do: " (#{s["location"]})", else: "")
+
+          mine =
+            if human[s["id"]], do: " — human: #{human[s["id"]]}", else: " — human: not confirmed"
+
+          "- status:#{s["id"]} finding #{s["finding"]}: #{s["status"]}#{where}. #{s["reason"]}#{mine}"
+        end)
+
+      Enum.join([head, "Commits:" | commits] ++ ["Proposed statuses:" | statuses], "\n")
+    end
+  end
+
+  def body_text(%{kind: "draft_comments", data: d, human: h}) do
+    decisions = h["decisions"] || %{}
+    verdict = h["verdict"] || "none chosen"
+    stale = if stale?(d), do: " POSSIBLY OUT OF DATE: head is now #{d["current_head"]}.", else: ""
+
+    comments =
+      Enum.map(d["comments"], fn c ->
+        state =
+          cond do
+            c["posted_url"] -> "posted #{c["posted_url"]}"
+            not anchored?(c) -> "NOT IN THE DIFF, cannot be approved until re-anchored"
+            true -> decisions[c["id"]] || "undecided"
+          end
+
+        "- comment:#{c["id"]} #{c["path"]}:#{c["line"]} (#{c["side"] || "RIGHT"}) [#{state}] #{c["body"]}"
+      end)
+
+    Enum.join(
+      ["Drafted against head #{d["head"]}.#{stale}", "Verdict (verdict): #{verdict}" | comments],
+      "\n"
+    )
+  end
+
+  defp open_item?(%{"type" => "thread"} = i), do: i["resolved"] != true
+  defp open_item?(%{"type" => "review"} = i), do: i["state"] == "changes_requested"
+  defp open_item?(_), do: false
+
+  defp item_text(i) do
+    where = if i["path"], do: " #{i["path"]}#{if i["line"], do: ":#{i["line"]}"}", else: ""
+    state = Enum.find_value([i["state"], i["resolved"] == true && "resolved"], &(&1 || nil))
+    "#{i["type"]} by #{i["author"]}#{where}#{if state, do: " [#{state}]"}: #{i["body"]}"
+  end
+
+  @doc "True for discussion items that are open: unresolved threads and requested changes."
+  def open_item(i), do: open_item?(i)
+
+  @doc "True when the pull request head moved since the drafts were made."
+  def stale?(d), do: d["current_head"] not in [nil, d["head"]]
+
+  @doc "True when the comment's line appears in its diff hunk, on its side."
+  def anchored?(c) do
+    key = if c["side"] == "LEFT", do: :old, else: :new
+    line = String.to_integer(c["line"])
+    Enum.any?(hunk_lines(c["hunk"]), &(&1[key] == line))
+  end
+
+  @doc """
+  A unified diff hunk as `%{kind, old, new, text}` lines (`kind` is :add, :del,
+  or :ctx; `old` and `new` are line numbers or nil). Empty without a valid @@ header.
+  """
+  def hunk_lines(hunk) do
+    [header | body] = String.split(hunk, "\n")
+
+    case Regex.run(~r/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/, header) do
+      [_, old, new] ->
+        {lines, _} =
+          Enum.map_reduce(body, {String.to_integer(old), String.to_integer(new)}, fn
+            "+" <> _ = t, {o, n} -> {%{kind: :add, old: nil, new: n, text: t}, {o, n + 1}}
+            "-" <> _ = t, {o, n} -> {%{kind: :del, old: o, new: nil, text: t}, {o + 1, n}}
+            t, {o, n} -> {%{kind: :ctx, old: o, new: n, text: t}, {o + 1, n + 1}}
+          end)
+
+        lines
+
+      _ ->
+        []
+    end
+  end
+
   defp format_answer(list) when is_list(list), do: Enum.join(list, ", ")
   defp format_answer(text), do: inspect(text)
 
@@ -813,8 +1059,70 @@ defmodule Jarvis.Planning.Catalog do
     end
   end
 
+  def human_action(%{kind: "round", data: d, human: h}, "status", %{"id" => id, "value" => v}) do
+    if id in ids(d["statuses"] || []) and v in ["resolved", "open"],
+      do: {:ok, Map.update(h, "statuses", %{id => v}, &Map.put(&1, id, v)), []},
+      else: {:error, "unknown status or value"}
+  end
+
+  def human_action(%{kind: "draft_comments", data: d, human: h}, action, %{"comment" => id})
+      when action in ["approve", "drop", "undecide"] do
+    c = Enum.find(d["comments"], &(&1["id"] == id))
+
+    cond do
+      c == nil ->
+        {:error, "no such draft comment"}
+
+      c["posted_url"] ->
+        {:error, "already posted"}
+
+      action == "approve" and not anchored?(c) ->
+        {:error, "its line is not in the diff"}
+
+      action == "undecide" ->
+        {:ok, Map.update(h, "decisions", %{}, &Map.delete(&1, id)), []}
+
+      true ->
+        {:ok, put_decision(h, id, if(action == "approve", do: "approved", else: "dropped")), []}
+    end
+  end
+
+  def human_action(%{kind: "draft_comments", human: h}, "verdict", %{"value" => v})
+      when v in @verdicts,
+      do: {:ok, Map.put(h, "verdict", v), []}
+
+  def human_action(%{kind: "draft_comments", data: d, human: h}, "post", _) do
+    approved = approved_drafts(d, h)
+
+    cond do
+      approved == [] ->
+        {:error, "approve at least one draft comment first"}
+
+      h["verdict"] == nil ->
+        {:error, "choose a verdict first"}
+
+      true ->
+        list = Enum.map_join(approved, ", ", & &1["id"])
+
+        {:ok, h,
+         [
+           {"verdict",
+            "Post the review now: verdict #{h["verdict"]}, draft comments #{list}, as one review through gh, and nothing else. Then set posted_url on each posted comment."}
+         ]}
+    end
+  end
+
   def human_action(_widget, _action, _params),
     do: {:error, "this widget does not take that action"}
+
+  defp put_decision(h, id, decision),
+    do: Map.update(h, "decisions", %{id => decision}, &Map.put(&1, id, decision))
+
+  @doc "Draft comments the human approved that are not posted yet."
+  def approved_drafts(d, h) do
+    decisions = h["decisions"] || %{}
+    Enum.filter(d["comments"], &(decisions[&1["id"]] == "approved" and &1["posted_url"] == nil))
+  end
 
   defp answer(d, h, %{"type" => "text"} = q, text) when is_binary(text) and text != "" do
     entry = %{"answer" => text, "correct" => nil}
@@ -905,6 +1213,21 @@ defmodule Jarvis.Planning.Catalog do
   def reconcile("comparison", _old, new, h) do
     keep = ids(new["criteria"])
     Map.update(h, "weights", %{}, &Map.take(&1, keep))
+  end
+
+  def reconcile("round", _old, new, h) do
+    keep = ids(new["statuses"] || [])
+    Map.update(h, "statuses", %{}, &Map.take(&1, keep))
+  end
+
+  # An edited draft must be approved again.
+  def reconcile("draft_comments", old, new, h) do
+    old_c = Map.new(old["comments"], &{&1["id"], Map.delete(&1, "posted_url")})
+    new_c = Map.new(new["comments"], &{&1["id"], Map.delete(&1, "posted_url")})
+
+    Map.update(h, "decisions", %{}, fn decisions ->
+      for {id, d} <- decisions, Map.get(old_c, id) == Map.get(new_c, id), into: %{}, do: {id, d}
+    end)
   end
 
   def reconcile("findings", _old, new, h) do
@@ -1165,6 +1488,100 @@ defmodule Jarvis.Planning.Catalog do
           "severity" => "nit",
           "path" => "README.md",
           "explanation" => "Typo in the tools table."
+        }
+      ]
+    }
+
+  def example("discussion"),
+    do: %{
+      "status" => "read",
+      "items" => [
+        %{
+          "id" => "i1",
+          "type" => "thread",
+          "author" => "maria",
+          "path" => "lib/jarvis/planning.ex",
+          "line" => "120",
+          "resolved" => false,
+          "body" => "Should this check the gate quiz too?"
+        },
+        %{
+          "id" => "i2",
+          "type" => "review",
+          "author" => "tom",
+          "state" => "changes_requested",
+          "body" => "Needs tests."
+        },
+        %{
+          "id" => "i3",
+          "type" => "thread",
+          "author" => "maria",
+          "path" => "README.md",
+          "line" => "4",
+          "resolved" => true,
+          "body" => "Typo."
+        },
+        %{
+          "id" => "i4",
+          "type" => "conversation",
+          "author" => "tom",
+          "body" => "Thanks for the quick turnaround."
+        }
+      ]
+    }
+
+  def example("round"),
+    do: %{
+      "number" => 2,
+      "head" => "b7c9e21",
+      "previous_head" => "a41f03d",
+      "commits" => [
+        %{"id" => "c1", "sha" => "b7c9e21", "subject" => "Check gate quizzes in move_task"}
+      ],
+      "statuses" => [
+        %{
+          "id" => "s1",
+          "finding" => "f1",
+          "status" => "resolved",
+          "location" => "lib/jarvis/planning.ex:131",
+          "reason" => "move_task/3 now checks the gate quiz."
+        },
+        %{
+          "id" => "s2",
+          "finding" => "f2",
+          "status" => "open",
+          "location" => "README.md:12",
+          "reason" => "The typo is still there."
+        },
+        %{
+          "id" => "s3",
+          "finding" => "f3",
+          "status" => "location_gone",
+          "old_location" => "lib/old.ex:9",
+          "reason" => "The file was deleted; I cannot tell if the issue went with it."
+        }
+      ]
+    }
+
+  def example("draft_comments"),
+    do: %{
+      "head" => "b7c9e21",
+      "comments" => [
+        %{
+          "id" => "c1",
+          "path" => "lib/jarvis/planning.ex",
+          "line" => "122",
+          "hunk" =>
+            "@@ -118,5 +118,6 @@ defmodule Jarvis.Planning do\n   def move_task(scope, task, name) do\n     with {:ok, t} <- fetch(task) do\n+      t = do_move(t, name)\n       {:ok, t}\n     end\n   end",
+          "body" =>
+            "This skips the gate quiz check; `move_task/3` should refuse while the quiz is open."
+        },
+        %{
+          "id" => "c2",
+          "path" => "lib/jarvis/planning.ex",
+          "line" => "300",
+          "hunk" => "@@ -118,3 +118,4 @@\n   def a, do: 1\n+  def b, do: 2",
+          "body" => "Line 300 is not in this hunk, so this one is flagged."
         }
       ]
     }

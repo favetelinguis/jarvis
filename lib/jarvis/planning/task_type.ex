@@ -114,12 +114,14 @@ defmodule Jarvis.Planning.TaskType do
       label: "PR review",
       icon: "hero-code-bracket-square",
       sections: [
-        {"pull_request", "Pull request", ~w(prose callout)},
+        {"pull_request", "Pull request", ~w(prose callout discussion)},
         {"background", "Background", ~w(prose architecture diagram glossary_term callout)},
         {"intuition", "Intuition", ~w(prose diagram examples callout)},
         {"code", "Code", ~w(walkthrough diagram architecture)},
         {"quiz", "Quiz", ~w(quiz)},
+        {"rounds", "Re-reviews", ~w(round discussion findings)},
         {"findings", "Findings", ~w(findings)},
+        {"comments", "Comments for the author", ~w(draft_comments)},
         {"verdict", "Verdict", ~w(decision callout)}
       ],
       steps: [
@@ -153,7 +155,8 @@ defmodule Jarvis.Planning.TaskType do
           command: "/pr-review"
         },
         %{name: "give verdict", from: "findings", to: "done", mover: :human},
-        %{name: "look again", from: "findings", to: "explanation", mover: :human}
+        %{name: "look again", from: "findings", to: "explanation", mover: :human},
+        %{name: "re-review", from: "done", to: "findings", mover: :human}
       ]
     },
     learn: %{

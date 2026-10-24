@@ -42,6 +42,14 @@ defmodule JarvisWeb.DesignSystemLive do
      "Step through, or jump to a file."},
     {"findings", "Review findings with severity; you answer each one.",
      "Filter by severity and mark findings Agree, Disagree, or Fixed."},
+    {"discussion",
+     "What others already said on a pull request; open threads and requested changes come first.",
+     "Comment on any item."},
+    {"round", "A re-review round: new commits and a proposed status for each earlier finding.",
+     "Confirm or change each status."},
+    {"draft_comments",
+     "Review comments previewed on their diff hunk, posted only after you approve and choose a verdict.",
+     "Approve or drop each draft, choose a verdict, then post."},
     {"quiz",
      "Questions that check understanding (retrieval practice). Three quizzes below: self-study, feedback, and gate.",
      "Answer the free-text question in the feedback quiz: the simulated agent judges it. Answer the gate quiz to unlock “passed” in the Learn lifecycle."}
@@ -129,7 +137,7 @@ defmodule JarvisWeb.DesignSystemLive do
 
     kinds =
       for kind <-
-            ~w(examples callout prose glossary_term decision diagram architecture comparison sources walkthrough findings),
+            ~w(examples callout prose glossary_term decision diagram architecture comparison sources walkthrough findings discussion round draft_comments),
           do: {kind, example.(kind)}
 
     (requirements ++ kinds ++ quizzes)

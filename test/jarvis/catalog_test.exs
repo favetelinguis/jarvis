@@ -296,4 +296,103 @@ defmodule Jarvis.CatalogTest do
 
     assert human["error"] == "again"
   end
+
+  describe "PR review widgets" do
+    defp widget(kind, data, human \\ %{}) do
+      {:ok, data} = Catalog.validate(kind, data)
+      %{id: 1, kind: kind, data: data, human: human}
+    end
+
+    test "a discussion that was not read says so and cannot be empty" do
+      assert {:error, _} = Catalog.validate("discussion", %{"status" => "not_read"})
+
+      w = widget("discussion", %{"status" => "not_read", "error" => "gh: not signed in"})
+      assert Catalog.text(w) =~ "NOT READ: gh: not signed in"
+
+      assert Catalog.text(widget("discussion", %{"status" => "read"})) =~ "No existing discussion"
+    end
+
+    test "a discussion lists open items before resolved ones" do
+      text = Catalog.text(widget("discussion", Catalog.example("discussion")))
+      assert text =~ ~r/Unresolved.*i1.*i2.*Other.*i3/s
+    end
+
+    test "a round with the same head has no statuses" do
+      data = Map.merge(Catalog.example("round"), %{"previous_head" => "b7c9e21"})
+      assert {:error, [error]} = Catalog.validate("round", data)
+      assert error =~ "no new commits"
+
+      same = %{"number" => 2, "head" => "a", "previous_head" => "a"}
+      assert Catalog.text(widget("round", same)) =~ "No new commits"
+    end
+
+    test "location_gone needs the old location, and humans only set resolved or open" do
+      bad = %{
+        "number" => 2,
+        "head" => "b",
+        "previous_head" => "a",
+        "statuses" => [%{"finding" => "f1", "status" => "location_gone", "reason" => "x"}]
+      }
+
+      assert {:error, [error]} = Catalog.validate("round", bad)
+      assert error =~ "old_location"
+
+      w = widget("round", Catalog.example("round"))
+
+      assert {:ok, %{"statuses" => %{"s3" => "open"}}, []} =
+               Catalog.human_action(w, "status", %{"id" => "s3", "value" => "open"})
+
+      assert {:error, _} = Catalog.human_action(w, "status", %{"id" => "s3", "value" => "agree"})
+
+      assert {:error, _} =
+               Catalog.human_action(w, "mark", %{"finding" => "f1", "mark" => "agree"})
+    end
+
+    test "a draft whose line is not in its hunk cannot be approved" do
+      w = widget("draft_comments", Catalog.example("draft_comments"))
+      assert Catalog.anchored?(Enum.at(w.data["comments"], 0))
+      refute Catalog.anchored?(Enum.at(w.data["comments"], 1))
+      assert {:ok, _, []} = Catalog.human_action(w, "approve", %{"comment" => "c1"})
+      assert {:error, _} = Catalog.human_action(w, "approve", %{"comment" => "c2"})
+    end
+
+    test "posting needs an approved draft and a verdict" do
+      w = widget("draft_comments", Catalog.example("draft_comments"))
+      assert {:error, _} = Catalog.human_action(w, "post", %{})
+
+      {:ok, h, []} = Catalog.human_action(w, "approve", %{"comment" => "c1"})
+
+      assert {:error, "choose a verdict first"} =
+               Catalog.human_action(%{w | human: h}, "post", %{})
+
+      {:ok, h, []} = Catalog.human_action(%{w | human: h}, "verdict", %{"value" => "comment"})
+      assert {:ok, _, [{"verdict", message}]} = Catalog.human_action(%{w | human: h}, "post", %{})
+      assert message =~ "verdict comment"
+      assert message =~ "c1"
+
+      assert {:error, _} = Catalog.human_action(w, "verdict", %{"value" => "lgtm"})
+    end
+
+    test "an edited draft loses its approval and a moved head marks drafts out of date" do
+      w = widget("draft_comments", Catalog.example("draft_comments"))
+      {:ok, h, []} = Catalog.human_action(w, "approve", %{"comment" => "c1"})
+
+      same = Catalog.reconcile("draft_comments", w.data, w.data, h)
+      assert same["decisions"] == %{"c1" => "approved"}
+
+      edited = update_in(w.data, ["comments", Access.at(0), "body"], fn _ -> "new text" end)
+      assert Catalog.reconcile("draft_comments", w.data, edited, h)["decisions"] == %{}
+
+      refute Catalog.stale?(w.data)
+      assert Catalog.stale?(Map.put(w.data, "current_head", "ffff"))
+    end
+
+    test "posted drafts are not offered again" do
+      w = widget("draft_comments", Catalog.example("draft_comments"))
+      {:ok, h, []} = Catalog.human_action(w, "approve", %{"comment" => "c1"})
+      data = put_in(w.data, ["comments", Access.at(0), "posted_url"], "https://example.test/1")
+      assert Catalog.approved_drafts(data, h) == []
+      assert Catalog.text(%{w | data: data, human: h}) =~ "posted https://example.test/1"
+    end
+  end
 end

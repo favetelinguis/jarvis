@@ -120,4 +120,37 @@ defmodule JarvisWeb.DesignSystemLiveTest do
     refute has_element?(view, "#finding-#{findings.id}-f1")
     assert has_element?(view, "#finding-#{findings.id}-f2")
   end
+
+  test "draft comments are flagged, approved, and need a verdict to post", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/design-system")
+    widgets = :sys.get_state(view.pid).socket.assigns.widgets
+    w = Enum.find(widgets, &(&1.kind == "draft_comments"))
+
+    assert has_element?(view, "#draft-#{w.id}-c2-flag")
+    refute has_element?(view, "#draft-#{w.id}-c1-flag")
+    assert has_element?(view, "#draft-#{w.id}-c2-approve[disabled]")
+    assert has_element?(view, "#draft-#{w.id}-c1 [data-marked=true]")
+    assert has_element?(view, "#drafts-#{w.id}-post[disabled]")
+
+    view |> element("#draft-#{w.id}-c1-approve") |> render_click()
+    assert has_element?(view, "#draft-#{w.id}-c1-approve[aria-pressed=true]")
+    assert has_element?(view, "#drafts-#{w.id}-post[disabled]")
+
+    view |> element("#verdict-#{w.id}-comment") |> render_click()
+    refute has_element?(view, "#drafts-#{w.id}-post[disabled]")
+  end
+
+  test "discussion groups open items apart and rounds take confirmed statuses", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/design-system")
+    widgets = :sys.get_state(view.pid).socket.assigns.widgets
+    d = Enum.find(widgets, &(&1.kind == "discussion"))
+    r = Enum.find(widgets, &(&1.kind == "round"))
+
+    assert has_element?(view, "#discussion-#{d.id}-open #item-#{d.id}-i1")
+    assert has_element?(view, "#discussion-#{d.id}-open #item-#{d.id}-i2")
+    assert has_element?(view, "#discussion-#{d.id}-rest #item-#{d.id}-i3")
+
+    view |> element("#status-#{r.id}-s2-open") |> render_click()
+    assert has_element?(view, "#status-#{r.id}-s2-open[aria-pressed=true]")
+  end
 end
