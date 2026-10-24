@@ -115,9 +115,9 @@ Ask in plain chat, never through a harness's own question tool: these skills run
 
 - Keep the open decisions as a tree. Each round, ask the whole frontier: every decision whose prerequisites are settled, and none that depends on an answer still open. Recompute it after my answers.
 - Format each question as `❓ **Q1** - **<title>**: <body>`, then `➡️ <your recommended answer>` alone on the next line. Word it so "yes" accepts the recommendation; I answer by number ("1 yes, 2 no, because..."). Number on across rounds, so a number always means one question.
-- Facts are yours: read the board, the code, the README, and the docs before asking, and never ask what you can find out. Decisions are mine: never answer one yourself and never go on with a guess.
+- Facts are yours: read the board, the code, the README, and the docs before asking, and never ask what you can find out. Decisions are mine: never answer one yourself and never go on with a guess. When your harness has subagents, send one to look up a fact the board, code, or docs do not answer. Do not wait for it: ask the rest of the frontier now, and hold only the questions that depend on its answer.
 - If I say an answer changes an earlier question, reopen that branch in the next round.
-- The interview is done when no open decision is left, not before. Then say what you understood in a few lines and wait for me to confirm we share it; do not act on it, write it down as settled, or move on until I do.
+- The interview is done when no open decision is left and nothing is silently assumed, not before. Then say what you understood in a few lines and wait for me to confirm we share it; do not act on it, write it down as settled, or move on until I do.
 - Challenge terms: when I use a term that conflicts with a Glossary entry or with what the code does, say so at once and ask which is right; when I am vague, propose one precise term; test a fuzzy boundary with a concrete edge-case scenario. When I state how something works, check the code and surface any contradiction.
 - Write each term as a `glossary_term` widget the moment I agree to it, not at the end; the closing confirmation covers the rest.
 
