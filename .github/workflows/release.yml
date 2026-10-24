@@ -35,7 +35,7 @@ jobs:
           for i in 1 2 3 4 5; do mix deps.get --only prod && exit 0; sleep $((i * 15)); done
           exit 1
       - run: bin/fetch-mdex-nif
-      - run: mix assets.setup && mix assets.deploy
+      - run: mix assets.setup && mix compile && mix assets.deploy
       - run: mix release --overwrite
       - name: Archive
         run: |
