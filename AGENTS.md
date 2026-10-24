@@ -309,6 +309,8 @@ custom classes must fully style the input
 
 ### LiveView JavaScript interop
 
+- **Never** send a value with `phx-value-value` on its own. LiveView's JS overwrites the `value` key with the element's `.value` (an empty string on a `<button>`), so the server receives `""` and `render_click` tests still pass because they skip the JS. Either add a matching `value={...}` attribute to the `<button>`, or name the key something else (`phx-value-choice`). SVG elements have no `.value`, so they are unaffected
+
 - Remember anytime you use `phx-hook="MyHook"` and that JS hook manages its own DOM, you **must** also set the `phx-update="ignore"` attribute
 - **Always** provide an unique DOM id alongside `phx-hook` otherwise a compiler error will be raised
 
