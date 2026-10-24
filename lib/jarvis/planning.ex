@@ -897,7 +897,12 @@ defmodule Jarvis.Planning do
 
   defp to_int(_), do: -1
 
-  defp lock!(schema, id), do: Repo.one!(from r in schema, where: r.id == ^id, lock: "FOR UPDATE")
+  # SQLite has no row locks. A write takes the database write lock, which makes
+  # the number allocation after it safe; a read first could not upgrade to it.
+  defp lock!(schema, id) do
+    {1, _} = Repo.update_all(from(r in schema, where: r.id == ^id), set: [id: id])
+    :ok
+  end
 
   defp next_number(query), do: (Repo.one(from r in query, select: max(r.number)) || 0) + 1
 

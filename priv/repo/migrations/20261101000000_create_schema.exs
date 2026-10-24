@@ -1,25 +1,35 @@
-defmodule Jarvis.Repo.Migrations.TypedTasksAndWidgets do
+defmodule Jarvis.Repo.Migrations.CreateSchema do
   @moduledoc """
-  Goal 3: tasks get a type and a lifecycle step, and goal and task sections
-  become widgets. A clean break: every goal, task, comment, and event is
-  dropped. Projects, worktrees, sessions, and transcripts stay.
+  The whole schema in one step, for SQLite. The PostgreSQL migrations that came
+  before it are gone: their data is not carried over.
   """
   use Ecto.Migration
 
-  def up do
-    alter table(:agent_sessions) do
-      remove :task_id
+  def change do
+    create table(:projects) do
+      add :key, :text, null: false
+      add :name, :text, null: false
+      timestamps(type: :utc_datetime_usec)
     end
 
-    drop table(:events)
-    drop table(:comments)
-    drop table(:tasks)
-    drop table(:goals)
+    create unique_index(:projects, [:key])
+
+    create table(:worktrees) do
+      add :project_id, references(:projects, on_delete: :delete_all), null: false
+      add :path, :text, null: false
+      add :name, :text, null: false
+      add :branch, :text
+      timestamps(type: :utc_datetime_usec)
+    end
+
+    create unique_index(:worktrees, [:path])
+    create index(:worktrees, [:project_id])
 
     create table(:goals) do
       add :project_id, references(:projects, on_delete: :delete_all), null: false
       add :number, :integer, null: false
       add :title, :text, null: false
+      add :poc, :boolean, null: false, default: false
       timestamps(type: :utc_datetime_usec)
     end
 
@@ -40,6 +50,22 @@ defmodule Jarvis.Repo.Migrations.TypedTasksAndWidgets do
     create unique_index(:tasks, [:goal_id, :number])
     create index(:tasks, [:project_id])
 
+    create table(:agent_sessions) do
+      add :project_id, references(:projects, on_delete: :delete_all), null: false
+      add :worktree_id, references(:worktrees, on_delete: :delete_all), null: false
+      add :task_id, references(:tasks, on_delete: :nilify_all)
+      add :pi_session_id, :text, null: false
+      add :agent, :text, null: false, default: "pi"
+      add :name, :text
+      add :state, :text, null: false, default: "idle"
+      add :last_seen_at, :utc_datetime_usec, null: false
+      add :inbox_cursor, :bigint, null: false, default: 0
+      timestamps(type: :utc_datetime_usec)
+    end
+
+    create unique_index(:agent_sessions, [:pi_session_id])
+    create index(:agent_sessions, [:project_id, :last_seen_at])
+
     create table(:widgets) do
       add :project_id, references(:projects, on_delete: :delete_all), null: false
       add :goal_id, references(:goals, on_delete: :delete_all), null: false
@@ -53,10 +79,6 @@ defmodule Jarvis.Repo.Migrations.TypedTasksAndWidgets do
     end
 
     create index(:widgets, [:goal_id, :task_id, :section, :position])
-
-    alter table(:agent_sessions) do
-      add :task_id, references(:tasks, on_delete: :nilify_all)
-    end
 
     create table(:comments) do
       add :goal_id, references(:goals, on_delete: :delete_all), null: false
@@ -96,6 +118,4 @@ defmodule Jarvis.Repo.Migrations.TypedTasksAndWidgets do
       timestamps(type: :utc_datetime_usec)
     end
   end
-
-  def down, do: raise(Ecto.MigrationError, "Goal 3 dropped the old planning data; no way back")
 end

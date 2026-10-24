@@ -1,5 +1,5 @@
 defmodule JarvisWeb.SettingsLiveTest do
-  use JarvisWeb.ConnCase, async: true
+  use JarvisWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 

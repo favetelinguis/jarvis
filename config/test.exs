@@ -1,17 +1,10 @@
 import Config
 
-# Configure your database
-#
-# The MIX_TEST_PARTITION environment variable can be used
-# to provide built-in test partitioning in CI environment.
-# Run `mix help test` for more information.
+# Tests use their own database file, never the Data directory of a running Jarvis.
 config :jarvis, Jarvis.Repo,
-  username: "postgres",
-  password: "postgres",
-  hostname: "localhost",
-  database: "jarvis_test#{System.get_env("MIX_TEST_PARTITION")}",
+  database: Path.join(System.tmp_dir!(), "jarvis_test#{System.get_env("MIX_TEST_PARTITION")}.db"),
   pool: Ecto.Adapters.SQL.Sandbox,
-  pool_size: System.schedulers_online() * 2
+  pool_size: 5
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.

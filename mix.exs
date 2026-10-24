@@ -4,12 +4,13 @@ defmodule Jarvis.MixProject do
   def project do
     [
       app: :jarvis,
-      version: "0.1.0",
+      version: System.get_env("JARVIS_VERSION", "0.1.0"),
       elixir: "~> 1.17",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
+      releases: releases(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader]
     ]
@@ -35,6 +36,30 @@ defmodule Jarvis.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
+  # `bin/jarvis` is the command users run (rel/jarvis); the generated script
+  # stays beside it as `bin/jarvis-release`. The integration files the
+  # Integrations panel installs travel in `share/`.
+  defp releases do
+    [jarvis: [include_executables_for: [:unix], steps: [:assemble, &package_command/1]]]
+  end
+
+  defp package_command(release) do
+    File.rename!(
+      Path.join(release.path, "bin/jarvis"),
+      Path.join(release.path, "bin/jarvis-release")
+    )
+
+    File.cp!("rel/jarvis", Path.join(release.path, "bin/jarvis"))
+    File.chmod!(Path.join(release.path, "bin/jarvis"), 0o755)
+
+    share = Path.join(release.path, "share")
+    File.rm_rf!(share)
+    File.mkdir_p!(share)
+    for dir <- ~w(agent pi skills), do: File.cp_r!(dir, Path.join(share, dir))
+
+    release
+  end
+
   # Specifies your project dependencies.
   #
   # Type `mix help deps` for examples and options.
@@ -43,7 +68,7 @@ defmodule Jarvis.MixProject do
       {:phoenix, "~> 1.8.16"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
-      {:postgrex, ">= 0.0.0"},
+      {:ecto_sqlite3, "~> 0.22"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
       {:phoenix_live_view, "~> 1.2.0"},

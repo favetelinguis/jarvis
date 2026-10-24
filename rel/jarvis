@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# The `jarvis` command of a Release: the generated release script, renamed to
+# bin/jarvis-release by mix.exs, does the work.
+set -euo pipefail
+
+self="$0"
+while [ -h "$self" ]; do
+  link="$(readlink "$self")"
+  case "$link" in /*) self="$link" ;; *) self="$(dirname "$self")/$link" ;; esac
+done
+release="$(cd "$(dirname "$self")" && pwd)/jarvis-release"
+
+# No distribution: two commands (or a second serve) must not fight over a node name.
+export RELEASE_DISTRIBUTION=none
+
+usage() {
+  echo "usage: jarvis serve | migrate | version" >&2
+  exit 1
+}
+
+[ $# -eq 1 ] || usage
+
+case "$1" in
+  version) exec "$release" eval 'Jarvis.Release.version()' ;;
+  migrate) exec "$release" eval 'Jarvis.Release.migrate()' ;;
+  serve)
+    "$release" eval 'Jarvis.Release.migrate()'
+    PHX_SERVER=true exec "$release" start
+    ;;
+  *) usage ;;
+esac

@@ -1,5 +1,5 @@
 defmodule Jarvis.ThemeTest do
-  use Jarvis.DataCase, async: true
+  use Jarvis.DataCase, async: false
 
   alias Jarvis.Theme
 

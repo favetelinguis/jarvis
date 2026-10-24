@@ -1,5 +1,5 @@
 defmodule JarvisWeb.Api.PlanningControllerTest do
-  use JarvisWeb.ConnCase, async: true
+  use JarvisWeb.ConnCase, async: false
 
   import Jarvis.Fixtures
 

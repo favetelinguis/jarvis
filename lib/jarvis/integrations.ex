@@ -531,7 +531,13 @@ defmodule Jarvis.Integrations do
 
   defp config(key), do: :jarvis |> Application.get_env(__MODULE__, []) |> Keyword.get(key)
   defp home, do: config(:home) || System.user_home!()
-  defp root, do: config(:root) || @default_root
+  # A Release carries the bundled integration files in share/ (see mix.exs).
+  defp root do
+    config(:root) ||
+      if(release = System.get_env("RELEASE_ROOT"), do: Path.join(release, "share")) ||
+      @default_root
+  end
+
   defp url, do: config(:url) || JarvisWeb.Endpoint.url()
   defp bridge, do: Path.join([root(), "agent", "jarvis-mcp.mjs"])
   defp hook_script, do: Path.join([root(), "agent", "jarvis-hook.mjs"])

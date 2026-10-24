@@ -8,41 +8,39 @@ Jarvis is a live task board that coding agents (pi, Codex, GitHub Copilot CLI) a
 - **Two-way.** You can move a task, release a worktree's claim, or comment from the browser. Comments reach the agents concerned at the start of their next turn in all three harnesses; idle sessions are never woken.
 - **Presence.** Every pi, Codex, and Copilot CLI session reports whether it is *working* or *waiting for you*, which worktree it runs in, and which task it focuses on.
 
-Built with Elixir, Phoenix LiveView, and Ecto, on PostgreSQL in Docker.
+Built with Elixir, Phoenix LiveView, and Ecto, on SQLite.
 
-## Setup
+## Install
 
-You need Docker and [mise](https://mise.jdx.dev). mise installs Erlang 29 and Elixir 1.20 from `mise.toml`.
+You need [mise](https://mise.jdx.dev) and, for the agents' MCP bridge, `node`. Nothing else: no Erlang, Elixir, Docker, or database.
+
+```bash
+mise use -g github:favetelinguis/jarvis
+jarvis serve        # http://localhost:4000
+```
+
+`jarvis serve` applies pending migrations and serves the board on `127.0.0.1:4000` (`PORT=4100 jarvis serve` for another port). The other commands are `jarvis migrate` and `jarvis version`. The server has no authentication and binds to loopback only: it is a local, single-user tool. Keep one running for all your agents, for example in its own herdr or tmux pane.
+
+**Data.** Everything lives in one file, `jarvis.db`, in the data directory: `$XDG_DATA_HOME/jarvis`, else `~/.local/share/jarvis` on Linux; `~/Library/Application Support/jarvis` on macOS. `JARVIS_DATA_DIR` overrides it. Back up that file to back up Jarvis. Data from the earlier PostgreSQL version is not carried over.
+
+**Agents.** Open **Settings** and click **Install** for pi, Codex, or Copilot CLI (see below). The panel installs the integration files bundled in the release.
+
+**Upgrade.** `mise use -g github:favetelinguis/jarvis@latest`, restart `jarvis serve`, then click **Install** again in Settings: the agents' configuration points into the release's directory, so it must be refreshed after an upgrade. Your data is kept; migrations run on start.
+
+Releases are published for Linux and macOS, x86_64 and aarch64, when a `v*` tag is pushed (`.github/workflows/release.yml`).
+
+## Develop
+
+You need [mise](https://mise.jdx.dev), which installs Erlang 29 and Elixir 1.20 from `mise.toml`.
 
 ```bash
 cd ~/repos/jarvis
 mise install
-mise run setup      # Postgres in Docker, deps, MDEx NIF, DB, assets
+mise run setup      # deps, MDEx NIF, DB, assets
 mise run server     # http://localhost:4000
 ```
 
-Keep one server running for all your agents, for example in its own herdr or tmux pane. To run it in the background, use a systemd user unit:
-
-```ini
-# ~/.config/systemd/user/jarvis.service
-[Unit]
-Description=Jarvis
-After=docker.service
-
-[Service]
-WorkingDirectory=%h/repos/jarvis
-ExecStart=%h/.local/share/mise/shims/mise run server
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
-```
-
-```bash
-systemctl --user enable --now jarvis
-```
-
-PostgreSQL runs as `jarvis-db-1` on `127.0.0.1:5432` with a named volume (`jarvis-pgdata`), so data survives restarts. The server binds to `127.0.0.1` only and has no authentication: it is a local, single-user tool.
+The server uses the same data directory as an installed release; set `JARVIS_DATA_DIR` to keep a development database apart. `MIX_ENV=prod mix release` builds a release in `_build/prod/rel/jarvis`.
 
 Browser live-reload, for developing Jarvis itself, uses inotify when `inotify-tools` is installed and otherwise polls `lib/jarvis_web` and `priv/static` once a second. The dev server logs at `info`, because `debug` would print every SQL query.
 

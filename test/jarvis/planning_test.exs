@@ -1,5 +1,5 @@
 defmodule Jarvis.PlanningTest do
-  use Jarvis.DataCase, async: true
+  use Jarvis.DataCase, async: false
 
   import Jarvis.Fixtures
 
