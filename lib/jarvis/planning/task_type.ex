@@ -115,33 +115,45 @@ defmodule Jarvis.Planning.TaskType do
       icon: "hero-code-bracket-square",
       sections: [
         {"pull_request", "Pull request", ~w(prose callout)},
-        {"walkthrough", "Walkthrough", ~w(walkthrough diagram architecture)},
+        {"background", "Background", ~w(prose architecture diagram glossary_term callout)},
+        {"intuition", "Intuition", ~w(prose diagram examples callout)},
+        {"code", "Code", ~w(walkthrough diagram architecture)},
+        {"quiz", "Quiz", ~w(quiz)},
         {"findings", "Findings", ~w(findings)},
         {"verdict", "Verdict", ~w(decision callout)}
       ],
       steps: [
         {"intake", "Intake", "Name the pull request; /pr-review takes it up"},
-        {"walkthrough", "Walkthrough", "/pr-review walks through the change"},
+        {"explanation", "Explanation",
+         "/pr-review explains the change: background, intuition, code"},
+        {"quiz", "Quiz", "You check that you understood the change"},
         {"findings", "Findings", "You answer each finding and give the verdict"},
         {"done", "Done", "Verdict given"}
       ],
       transitions: [
         %{
-          name: "start walkthrough",
+          name: "start explanation",
           from: "intake",
-          to: "walkthrough",
+          to: "explanation",
+          mover: :agent,
+          command: "/pr-review"
+        },
+        %{
+          name: "quiz ready",
+          from: "explanation",
+          to: "quiz",
           mover: :agent,
           command: "/pr-review"
         },
         %{
           name: "findings ready",
-          from: "walkthrough",
+          from: "quiz",
           to: "findings",
           mover: :agent,
           command: "/pr-review"
         },
         %{name: "give verdict", from: "findings", to: "done", mover: :human},
-        %{name: "look again", from: "findings", to: "walkthrough", mover: :human}
+        %{name: "look again", from: "findings", to: "explanation", mover: :human}
       ]
     },
     learn: %{
