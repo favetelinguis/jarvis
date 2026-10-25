@@ -193,7 +193,7 @@ defmodule Jarvis.Integrations do
   # settings.json; skills: the ten workflows in ~/.agents/skills, shared by all agents.
   defp present?(:pi, :package) do
     with {:ok, json} <- read_json(pi_settings()) do
-      entries = Enum.filter(json["packages"] || [], &(package_source(&1) == pi_package()))
+      entries = Enum.filter(json["packages"] || [], &jarvis_package?/1)
       {:ok, entries == [pi_entry()]}
     end
   end
@@ -226,7 +226,7 @@ defmodule Jarvis.Integrations do
   defp add(:pi, :package) do
     update_json(pi_settings(), fn json ->
       Map.update(json, "packages", [pi_entry()], fn packages ->
-        Enum.reject(packages, &(package_source(&1) == pi_package())) ++ [pi_entry()]
+        Enum.reject(packages, &jarvis_package?/1) ++ [pi_entry()]
       end)
     end)
   end
@@ -275,7 +275,7 @@ defmodule Jarvis.Integrations do
           json
 
         packages ->
-          Map.put(json, "packages", Enum.reject(packages, &(package_source(&1) == pi_package())))
+          Map.put(json, "packages", Enum.reject(packages, &jarvis_package?/1))
       end
     end)
   end
@@ -333,6 +333,15 @@ defmodule Jarvis.Integrations do
         true -> Map.put(acc, event, rest)
       end
     end)
+  end
+
+  # Other installed versions (mise keeps one dir per version) register the same MCP server, so
+  # they count as this package: installing replaces them instead of piling up and clashing.
+  defp jarvis_package?(entry) do
+    source = package_source(entry)
+
+    source == pi_package() or
+      (is_binary(source) and source =~ ~r{/github-favetelinguis-jarvis/[^/]+/share/pi$})
   end
 
   defp package_source(%{"source" => source}), do: source

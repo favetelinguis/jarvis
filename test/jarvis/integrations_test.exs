@@ -73,6 +73,20 @@ defmodule Jarvis.IntegrationsTest do
     assert length(path |> File.read!() |> Jason.decode!() |> Map.fetch!("packages")) == 2
   end
 
+  test "pi: entries from other installed versions are replaced on install", %{home: home} do
+    path = Path.join(home, ".pi/agent/settings.json")
+    old = "/x/mise/installs/github-favetelinguis-jarvis/0.2.2/share/pi"
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(path, Jason.encode!(%{"packages" => ["npm:other", %{"source" => old}]}))
+
+    assert %{state: :installed} = Integrations.install(:pi)
+
+    sources =
+      path |> File.read!() |> Jason.decode!() |> Map.fetch!("packages") |> Enum.map(&is_map/1)
+
+    assert sources == [false, true]
+  end
+
   test "pi: unreadable configuration is also untouched by uninstall", %{home: home} do
     path = Path.join(home, ".pi/agent/settings.json")
     File.mkdir_p!(Path.dirname(path))
