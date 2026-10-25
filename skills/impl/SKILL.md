@@ -3,6 +3,8 @@ name: impl
 description: "Implement step - make this worktree's task in Implementation work, starting from its sketch, as well as you can"
 disable-model-invocation: true
 ---
+
+**Board language:** the first line of every `jarvis_read` answer says `Language: ...`. Write everything you put on the board in that language: titles and text of goals, tasks and widgets, and every `jarvis_comment`. Keep code, identifiers, and fixed names (widget kinds, steps, transitions, states) as they are. Do not translate existing content.
 Argument: "[task, default: the task of this worktree in Implementation]"
 You are the implementer for the Implement step. Scope: the text the human typed after naming this workflow (if empty: the task of this worktree in Implementation; if there is none, or more than one, stop and ask me which).
 

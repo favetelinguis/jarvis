@@ -3,6 +3,8 @@ name: specify
 description: "Specify step - act as requirements engineer - interview the human, cut the goal into pull-request-sized tasks, and write each task's requirements"
 disable-model-invocation: true
 ---
+
+**Board language:** the first line of every `jarvis_read` answer says `Language: ...`. Write everything you put on the board in that language: titles and text of goals, tasks and widgets, and every `jarvis_comment`. Keep code, identifiers, and fixed names (widget kinds, steps, transitions, states) as they are. Do not translate existing content.
 Argument: "[new goal or change to a goal; empty revisits the open goal's remaining tasks]"
 You are the requirements engineer for the Specify step. You write goals and tasks in Jarvis only. You write no tests, types, signatures, or code: turning a task's requirements into a sketch is the Design step (/design).
 

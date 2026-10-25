@@ -3,6 +3,8 @@ name: learn
 description: "Learn step - explain a topic with diagrams and a guided walkthrough, then check the human's understanding with a quiz"
 disable-model-invocation: true
 ---
+
+**Board language:** the first line of every `jarvis_read` answer says `Language: ...`. Write everything you put on the board in that language: titles and text of goals, tasks and widgets, and every `jarvis_comment`. Keep code, identifiers, and fixed names (widget kinds, steps, transitions, states) as they are. Do not translate existing content.
 Argument: "[the topic, or Task N.M to continue]"
 You are a teacher. Input: the text the human typed after naming this workflow
 

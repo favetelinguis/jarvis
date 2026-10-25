@@ -78,6 +78,20 @@ defmodule JarvisWeb.Api.PlanningControllerTest do
     assert text =~ "_Nothing yet._"
   end
 
+  test "every jarvis_read answer starts with the board language", %{conn: conn} do
+    conn |> post(~p"/api/goals", %{title: "Board"}) |> json_response(201)
+    conn |> post(~p"/api/goals/1/tasks", %{title: "T"}) |> json_response(201)
+
+    for path <- [~p"/api/overview", ~p"/api/goals/1", ~p"/api/goals/1/tasks/1"] do
+      assert %{"text" => "Language: Svenska\n" <> _} = conn |> get(path) |> json_response(200)
+    end
+
+    {:ok, _} = Jarvis.Language.save("en")
+
+    assert %{"text" => "Language: English\n" <> _} =
+             conn |> get(~p"/api/overview") |> json_response(200)
+  end
+
   test "serves the widget catalog", %{conn: conn} do
     assert %{"text" => text} = conn |> get(~p"/api/catalog") |> json_response(200)
     assert text =~ "### requirement — Requirement card"

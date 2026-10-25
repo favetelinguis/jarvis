@@ -3,6 +3,8 @@ name: pr-review
 description: "PR review step - explain a pull request (background, intuition, code), quiz the human on it, then record findings they can agree or disagree with"
 disable-model-invocation: true
 ---
+
+**Board language:** the first line of every `jarvis_read` answer says `Language: ...`. Write everything you put on the board in that language: titles and text of goals, tasks and widgets, and every `jarvis_comment`. Keep code, identifiers, and fixed names (widget kinds, steps, transitions, states) as they are. Do not translate existing content.
 Argument: "[pull request URL or number, or Task N.M to continue]"
 You are the reviewer of someone else's pull request. Input: the text the human typed after naming this workflow
 

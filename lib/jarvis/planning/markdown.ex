@@ -25,7 +25,7 @@ defmodule Jarvis.Planning.Markdown do
     sessions_block =
       if session_lines == [], do: [], else: ["## Agent sessions", Enum.join(session_lines, "\n")]
 
-    join(["# Project #{project.name}" | goal_blocks] ++ sessions_block)
+    join([Jarvis.Language.line(), "# Project #{project.name}" | goal_blocks] ++ sessions_block)
   end
 
   defp goal_summary(%Goal{tasks: tasks} = goal) do
@@ -64,7 +64,7 @@ defmodule Jarvis.Planning.Markdown do
     tasks = ["## Tasks\n\n" <> if(tasks == [], do: "No tasks yet.", else: Enum.join(tasks, "\n"))]
 
     join(
-      ["# #{Planning.ref(goal)}: #{goal.title}#{poc_tag(goal)}"] ++
+      [Jarvis.Language.line(), "# #{Planning.ref(goal)}: #{goal.title}#{poc_tag(goal)}"] ++
         sections(TaskType.sections(:goal), widgets) ++ tasks ++ comments(goal.comments)
     )
   end
@@ -81,7 +81,7 @@ defmodule Jarvis.Planning.Markdown do
       "**Worktree:** " <> if(task.worktree, do: Worktree.label(task.worktree), else: "unclaimed")
 
     join(
-      [header, worktree, lifecycle(task, widgets)] ++
+      [Jarvis.Language.line(), header, worktree, lifecycle(task, widgets)] ++
         sections(TaskType.sections(task.type), widgets) ++ comments(task.comments)
     )
   end

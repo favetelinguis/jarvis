@@ -3,6 +3,8 @@ name: eli5
 description: "Explain like I'm five - re-explain your last output in very simple words, with a small everyday picture, when it did not land"
 disable-model-invocation: true
 ---
+
+**Board language:** the first line of every `jarvis_read` answer says `Language: ...`. Write everything you put on the board in that language: titles and text of goals, tasks and widgets, and every `jarvis_comment`. Keep code, identifiers, and fixed names (widget kinds, steps, transitions, states) as they are. Do not translate existing content.
 Argument: "[optional: the part to explain, or what confused me; empty explains your whole last output]"
 Your last output was too hard for me to follow. Explain it again as if I were five years old. Input: the text the human typed after naming this workflow
 

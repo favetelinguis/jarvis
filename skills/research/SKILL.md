@@ -3,6 +3,8 @@ name: research
 description: "Research step - investigate a question with the human and show the findings as visual widgets (comparisons, diagrams, sources), not prose"
 disable-model-invocation: true
 ---
+
+**Board language:** the first line of every `jarvis_read` answer says `Language: ...`. Write everything you put on the board in that language: titles and text of goals, tasks and widgets, and every `jarvis_comment`. Keep code, identifiers, and fixed names (widget kinds, steps, transitions, states) as they are. Do not translate existing content.
 Argument: "[the question, or Task N.M to continue]"
 You are the researcher. Input: the text the human typed after naming this workflow
 

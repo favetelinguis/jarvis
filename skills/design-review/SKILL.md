@@ -3,6 +3,8 @@ name: design-review
 description: "Design checkpoint inside a design session - check the task's sketch against its requirements, the project's structure, and simplicity, then refocus"
 disable-model-invocation: true
 ---
+
+**Board language:** the first line of every `jarvis_read` answer says `Language: ...`. Write everything you put on the board in that language: titles and text of goals, tasks and widgets, and every `jarvis_comment`. Keep code, identifiers, and fixed names (widget kinds, steps, transitions, states) as they are. Do not translate existing content.
 Argument: "[what you are worried about]"
 Checkpoint for the design session we are in. Focus: the text the human typed after naming this workflow (if empty: the whole sketch of the task being designed).
 

@@ -5,7 +5,7 @@ defmodule JarvisWeb.SettingsLive do
   """
   use JarvisWeb, :live_view
 
-  alias Jarvis.{Integrations, Planning.Catalog, Theme}
+  alias Jarvis.{Integrations, Language, Planning.Catalog, Theme}
 
   import JarvisWeb.WidgetComponents
 
@@ -20,6 +20,7 @@ defmodule JarvisWeb.SettingsLive do
      socket
      |> assign(:integrations, [])
      |> assign(:page_title, "Settings")
+     |> assign(:language, Language.current())
      |> assign(:colors, Theme.current())
      |> assign(:errors, %{})
      |> assign(:saved?, Theme.custom?())
@@ -38,6 +39,13 @@ defmodule JarvisWeb.SettingsLive do
 
   def handle_event("uninstall", %{"agent" => agent}, socket),
     do: {:noreply, change_integration(socket, agent, &Integrations.uninstall/1)}
+
+  def handle_event("language", %{"language" => code}, socket) do
+    case Language.save(code) do
+      {:ok, code} -> {:noreply, assign(socket, :language, code)}
+      {:error, _} -> {:noreply, socket}
+    end
+  end
 
   def handle_event("change", params, socket) do
     colors =
@@ -147,6 +155,24 @@ defmodule JarvisWeb.SettingsLive do
 
     ~H"""
     <Layouts.app flash={@flash} theme_css={@theme_css} crumbs={[{"Settings", ~p"/settings"}]}>
+      <section id="language-panel" class="mb-10">
+        <h2 class="text-xl font-semibold tracking-tight">Language</h2>
+        <p class="mt-1 max-w-2xl text-sm text-base-content/70">
+          The language agents write goals, tasks, widgets, and comments in. Existing content is not translated.
+        </p>
+        <.form for={%{}} id="language-form" phx-change="language" class="mt-3">
+          <select
+            id="language"
+            name="language"
+            class="rounded-lg border border-base-300 bg-base-100 px-3 py-1.5 text-sm"
+          >
+            <option :for={{code, name} <- Language.all()} value={code} selected={code == @language}>
+              {name}
+            </option>
+          </select>
+        </.form>
+      </section>
+
       <h1 class="text-2xl font-semibold tracking-tight">Brand colors</h1>
       <p class="mt-1 max-w-2xl text-sm text-base-content/70">
         Three colors drive every widget, button, and graph in Jarvis. Change them to match the company you work for;

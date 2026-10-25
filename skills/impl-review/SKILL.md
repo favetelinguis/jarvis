@@ -3,6 +3,8 @@ name: impl-review
 description: "Review step - review this worktree's task in Review as a pull request, simplify and align it with the project, fix what is safe in place, close the task, and hand off the rest"
 disable-model-invocation: true
 ---
+
+**Board language:** the first line of every `jarvis_read` answer says `Language: ...`. Write everything you put on the board in that language: titles and text of goals, tasks and widgets, and every `jarvis_comment`. Keep code, identifiers, and fixed names (widget kinds, steps, transitions, states) as they are. Do not translate existing content.
 Argument: "[range or focus, default: uncommitted changes]"
 You are the reviewer for the Review step. Review: the text the human typed after naming this workflow (if empty: the uncommitted changes, from `git diff` and untracked files, or the last commit if the tree is clean). It implements the task of this worktree in Review; read that task section and the goal's Glossary first. Review it as the pull request the team will see.
 

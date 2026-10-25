@@ -7,6 +7,13 @@ defmodule JarvisWeb.SettingsLiveTest do
 
   @good %{"primary" => "#0b5fff", "secondary" => "#1f2937", "accent" => "#f59e0b"}
 
+  test "the language defaults to Swedish and a change is saved", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/settings")
+    assert has_element?(view, "#language option[value=sv][selected]")
+    view |> form("#language-form", language: "en") |> render_change()
+    assert Jarvis.Language.current() == "en"
+  end
+
   test "previews edited colors without saving them", %{conn: conn} do
     {:ok, view, _} = live(conn, ~p"/settings")
     view |> form("#brand-form", colors: @good) |> render_change()
