@@ -63,27 +63,9 @@ The pi package contains a lifecycle-only extension, `pi/extensions/jarvis.ts`. A
 
 To migrate an existing pi installation, re-click **Install** in Settings, then run `/reload` in pi or restart it. The old package-only configuration is shown as partly installed until migrated. The Jarvis footer, `/jarvis` command, and idle comment polling are removed. Codex and Copilot CLI should be restarted after updating their integration. If pi's server runs elsewhere, set `JARVIS_URL` (default `http://localhost:4000`).
 
-### The workflow
+### The workflows
 
-Workflows are skills that start only when you name them: `/skill:specify` in pi, `$specify` in Codex, `/specify` in Copilot CLI, followed by the input.
-
-A Feature task moves through **Requirements → Design → Implementation → Review → Done**; the task page shows the graph, where the task came from, and who moves it next.
-
-1. `specify add a live task board`: the agent interviews you and writes the goal and its tasks to Jarvis, each requirement as a card. You confirm each card (or question it on the card), then click **approve requirements**: that move is always yours.
-2. `design` in the worktree that should build the task: the agent claims it and sketches it in the code. `design-review` approves the design and moves it on.
-3. `impl`, then `impl-review`: the reviewer moves the task to **Done** (or back to Implementation) and leaves its verdict as a comment.
-
-Research, PR review, and Learn tasks have their own skills and lifecycles (`research`, `pr-review`, `learn`).
-
-When an answer from the agent did not land, `eli5` re-explains its last output in plain words. It changes nothing.
-
-The interviewing skills (`specify`, `design`, `design-review`, `research`, `learn`) ask in plain chat in rounds: numbered questions, each with the agent's recommended answer, which you can answer by number. They never use a harness's own question tool.
-
-Several sessions in several worktrees can run at once. Each claims its own task, and the board shows which session works where.
-
-### POC mode
-
-`poc Goal N` (or `poc <what to build>`) skips the strict workflow: the agent builds every task of the goal in one go, moving tasks along their lifecycle with `force_step` (the override that ignores human-only transitions), leaving a comment on each. Use it to see a result fast; use the normal workflow when you want to review each step.
+Workflows are skills that start only when you name them: `/skill:specify` in pi, `$specify` in Codex, `/specify` in Copilot CLI, followed by the input. The **Guide** in Jarvis (`/guide`, Guide in the top navigation) explains how goals, tasks, steps, claims, and the workflows are used, with each task type's lifecycle and an example flow.
 
 ### Tools
 
@@ -120,6 +102,7 @@ All three harnesses use the same six MCP tool definitions. Tool calls carry the 
 | `/projects/:id` | Goals and matching tasks with All, Unfinished, per-type, and per-step filters; type, step, claim, and focus dots. Live sessions, activity feed |
 | `.../goals/:n` | The goal's sections as widgets, its tasks, notes on the goal |
 | `.../goals/:n/tasks/:m` | The lifecycle graph and the moves out of the current step, every section as widgets you can comment on, who is listening, release claim, conversation with the agents |
+| `/guide` | How the workflows are used: concepts, claims and sessions, each task type's lifecycle with its transitions and an example flow, other workflows |
 | `/design-system` | Every widget kind with example data, the lifecycle graphs, and the theme, all playable in memory with a simulated agent |
 | `/settings` | Integrations (install Jarvis into pi, Codex, Copilot CLI) and the brand colors (primary, secondary, accent): live preview, contrast table, save, reset |
 

@@ -1783,103 +1783,11 @@ defmodule JarvisWeb.WidgetComponents do
 
   @doc "The lifecycle of a task type as a graph, and the moves out of the current step."
   def lifecycle(assigns) do
-    steps = TaskType.steps(assigns.type)
-    layout = GraphLayout.lifecycle(steps, TaskType.transitions(assigns.type))
-    order = steps |> Enum.map(&elem(&1, 0)) |> Enum.with_index() |> Map.new()
-    next = MapSet.new(for %{t: t} <- assigns.transitions, do: t.to)
-
-    assigns = assign(assigns, steps: steps, layout: layout, order: order, next: next)
+    assigns = assign(assigns, :next, for(%{t: t} <- assigns.transitions, do: t.to))
 
     ~H"""
     <div id="lifecycle" class="space-y-4">
-      <div class="overflow-x-auto pb-1">
-        <div class="relative" style={"width: #{@layout.width}px; height: #{@layout.height}px"}>
-          <svg
-            class="absolute inset-0"
-            width={@layout.width}
-            height={@layout.height}
-            aria-hidden="true"
-          >
-            <defs>
-              <marker
-                id="lc-arrow"
-                viewBox="0 0 10 10"
-                refX="9"
-                refY="5"
-                markerWidth="7"
-                markerHeight="7"
-                orient="auto"
-              >
-                <path d="M0,0 L10,5 L0,10 z" class="fill-secondary" />
-              </marker>
-              <marker
-                id="lc-arrow-on"
-                viewBox="0 0 10 10"
-                refX="9"
-                refY="5"
-                markerWidth="7"
-                markerHeight="7"
-                orient="auto"
-              >
-                <path d="M0,0 L10,5 L0,10 z" class="fill-primary" />
-              </marker>
-            </defs>
-            <g :for={arc <- @layout.arcs}>
-              <path
-                d={arc.d}
-                fill="none"
-                marker-end={if arc.t.from == @step, do: "url(#lc-arrow-on)", else: "url(#lc-arrow)"}
-                stroke-dasharray={if arc.dir == :back, do: "5 4"}
-                class={[
-                  if(arc.t.from == @step, do: "stroke-primary", else: "stroke-secondary opacity-40")
-                ]}
-                stroke-width={if arc.t.from == @step, do: 2.5, else: 1.5}
-              />
-              <text
-                x={arc.lx}
-                y={arc.ly}
-                text-anchor="middle"
-                class={[
-                  "text-[10px]",
-                  if(arc.t.from == @step,
-                    do: "fill-primary font-semibold",
-                    else: "fill-base-content opacity-50"
-                  )
-                ]}
-              >
-                {arc.t.name}
-              </text>
-            </g>
-          </svg>
-          <div
-            :for={{key, label, hint} <- @steps}
-            id={"step-#{key}"}
-            data-state={step_state(key, @step, @previous, @next, @order)}
-            title={hint}
-            class={[
-              "absolute flex flex-col items-center justify-center rounded-xl px-2 text-center text-sm font-medium transition",
-              case step_state(key, @step, @previous, @next, @order) do
-                "current" -> "bg-primary text-primary-content shadow-lg ring-4 ring-primary/25"
-                "previous" -> "border-2 border-dashed border-accent bg-base-100"
-                "next" -> "border-2 border-primary bg-primary/5"
-                "passed" -> "bg-base-200 text-base-content/70"
-                _ -> "border border-base-300 bg-base-100 text-base-content/60"
-              end
-            ]}
-            style={node_style(@layout.steps[key])}
-          >
-            <span>{label}</span>
-            <span class="text-[10px] font-normal uppercase tracking-wide opacity-80">
-              {case step_state(key, @step, @previous, @next, @order) do
-                "current" -> "you are here"
-                "previous" -> "came from"
-                "next" -> "next"
-                _ -> ""
-              end}
-            </span>
-          </div>
-        </div>
-      </div>
+      <.lifecycle_graph type={@type} step={@step} previous={@previous} next={@next} />
 
       <div class="grid gap-2 md:grid-cols-2">
         <p :if={@transitions == []} class="text-sm italic text-base-content/60">
@@ -1931,8 +1839,138 @@ defmodule JarvisWeb.WidgetComponents do
     """
   end
 
+  attr :type, :atom, required: true
+  attr :step, :string, default: nil, doc: "the current step; `nil` highlights none"
+  attr :previous, :string, default: nil
+  attr :next, :list, default: [], doc: "keys of the steps the current step can move to"
+  attr :prefix, :string, default: "", doc: "prefixed to every DOM id in the graph"
+
+  @doc """
+  The graph of a task type's lifecycle: steps as nodes (`<prefix>step-<key>`
+  with `data-state`), transitions as named arrows, transitions back dashed.
+  Without a step nothing is highlighted. The prefix goes on every id, including
+  the arrow markers, so several graphs can share a page.
+  """
+  def lifecycle_graph(assigns) do
+    steps = TaskType.steps(assigns.type)
+    order = steps |> Enum.map(&elem(&1, 0)) |> Enum.with_index() |> Map.new()
+    next = MapSet.new(assigns.next)
+
+    nodes =
+      for {key, label, hint} <- steps,
+          do: {key, label, hint, step_state(key, assigns.step, assigns.previous, next, order)}
+
+    assigns =
+      assign(assigns,
+        layout: GraphLayout.lifecycle(steps, TaskType.transitions(assigns.type)),
+        nodes: nodes
+      )
+
+    ~H"""
+    <div class="overflow-x-auto pb-1">
+      <div class="relative" style={"width: #{@layout.width}px; height: #{@layout.height}px"}>
+        <svg
+          class="absolute inset-0"
+          width={@layout.width}
+          height={@layout.height}
+          aria-hidden="true"
+        >
+          <defs>
+            <marker
+              id={"#{@prefix}lc-arrow"}
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto"
+            >
+              <path d="M0,0 L10,5 L0,10 z" class="fill-secondary" />
+            </marker>
+            <marker
+              id={"#{@prefix}lc-arrow-on"}
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto"
+            >
+              <path d="M0,0 L10,5 L0,10 z" class="fill-primary" />
+            </marker>
+          </defs>
+          <g :for={arc <- @layout.arcs}>
+            <path
+              d={arc.d}
+              fill="none"
+              marker-end={
+                if arc.t.from == @step,
+                  do: "url(##{@prefix}lc-arrow-on)",
+                  else: "url(##{@prefix}lc-arrow)"
+              }
+              stroke-dasharray={if arc.dir == :back, do: "5 4"}
+              class={[
+                cond do
+                  arc.t.from == @step -> "stroke-primary"
+                  is_nil(@step) -> "stroke-secondary opacity-70"
+                  true -> "stroke-secondary opacity-40"
+                end
+              ]}
+              stroke-width={if arc.t.from == @step, do: 2.5, else: 1.5}
+            />
+            <text
+              x={arc.lx}
+              y={arc.ly}
+              text-anchor="middle"
+              class={[
+                "text-[10px]",
+                cond do
+                  arc.t.from == @step -> "fill-primary font-semibold"
+                  is_nil(@step) -> "fill-base-content opacity-80"
+                  true -> "fill-base-content opacity-50"
+                end
+              ]}
+            >
+              {arc.t.name}
+            </text>
+          </g>
+        </svg>
+        <div
+          :for={{key, label, hint, state} <- @nodes}
+          id={"#{@prefix}step-#{key}"}
+          data-state={state}
+          title={hint}
+          class={[
+            "absolute flex flex-col items-center justify-center rounded-xl px-2 text-center text-sm font-medium transition",
+            case state do
+              "current" -> "bg-primary text-primary-content shadow-lg ring-4 ring-primary/25"
+              "previous" -> "border-2 border-dashed border-accent bg-base-100"
+              "next" -> "border-2 border-primary bg-primary/5"
+              "passed" -> "bg-base-200 text-base-content/70"
+              "plain" -> "border border-base-300 bg-base-100"
+              _ -> "border border-base-300 bg-base-100 text-base-content/60"
+            end
+          ]}
+          style={node_style(@layout.steps[key])}
+        >
+          <span>{label}</span>
+          <span class="text-[10px] font-normal uppercase tracking-wide opacity-80">
+            {case state do
+              "current" -> "you are here"
+              "previous" -> "came from"
+              "next" -> "next"
+              _ -> ""
+            end}
+          </span>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   defp step_state(key, step, previous, next, order) do
     cond do
+      is_nil(step) -> "plain"
       key == step -> "current"
       key == previous -> "previous"
       MapSet.member?(next, key) -> "next"

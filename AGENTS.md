@@ -13,6 +13,7 @@ A live task board and session mirror for coding agents. See README.md for usage.
 ## Commands
 
 - `mise run setup` once, `mise run server` to run, `mise run check` before saying something works (format, warnings as errors, tests).
+- When you add or change a task type, a step, a transition, or a workflow, update the Guide (`lib/jarvis_web/live/guide_live.ex`) in the same change: its lifecycle graphs and transition cards come from `TaskType`, but its concepts, example flows, and other text are written by hand.
 - `pi/extensions/jarvis.ts` has no local TypeScript toolchain; type-check it against pi's installed packages when you change it.
 
 This is a web application written using the Phoenix web framework.

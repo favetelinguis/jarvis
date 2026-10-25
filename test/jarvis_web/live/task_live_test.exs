@@ -63,6 +63,24 @@ defmodule JarvisWeb.TaskLiveTest do
       assert {:ok, %{step: "design"}} = Planning.fetch_task(scope, 1, 1)
     end
 
+    test "the Guide link at the lifecycle opens the Guide at the task's type", %{
+      conn: conn,
+      scope: scope,
+      goal: goal
+    } do
+      {:ok, view, _} = open(conn, scope)
+      assert has_element?(view, ~s(#task-lifecycle #lifecycle-guide[href="/guide#feature"]))
+
+      task!(scope, goal, %{"title" => "Review it", "type" => "pr_review"})
+      {:ok, review, _} = open(conn, scope, 2)
+      assert has_element?(review, ~s(#lifecycle-guide[href="/guide#pr-review"]))
+
+      {:ok, guide, _} =
+        review |> element("#lifecycle-guide") |> render_click() |> follow_redirect(conn)
+
+      assert has_element?(guide, "section#pr-review")
+    end
+
     test "Done ends the lifecycle", %{conn: conn, scope: scope, task: task} do
       {:ok, _} = Planning.update_task(scope, task, %{"force_step" => "done"})
       {:ok, view, _} = open(conn, scope)

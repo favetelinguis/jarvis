@@ -69,6 +69,13 @@ defmodule JarvisWeb.Layouts do
         </nav>
         <div class="ml-auto flex items-center gap-3">
           <.link
+            id="nav-guide"
+            navigate={~p"/guide"}
+            class="rounded px-2 py-1 text-sm text-base-content/70 transition hover:bg-base-200"
+          >
+            Guide
+          </.link>
+          <.link
             navigate={~p"/design-system"}
             class="rounded px-2 py-1 text-sm text-base-content/70 transition hover:bg-base-200"
           >

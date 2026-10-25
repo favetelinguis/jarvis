@@ -158,6 +158,15 @@ defmodule JarvisWeb.TaskLive do
       </header>
 
       <.panel title="Lifecycle" id="task-lifecycle">
+        <:actions>
+          <.link
+            id="lifecycle-guide"
+            navigate={JarvisWeb.GuideLive.path(@task.type)}
+            class="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-base-content/60 transition hover:bg-base-200 hover:text-base-content"
+          >
+            <.icon name="hero-book-open-mini" class="size-4" /> Guide
+          </.link>
+        </:actions>
         <.lifecycle
           type={@task.type}
           step={@task.step}
