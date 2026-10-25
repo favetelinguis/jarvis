@@ -34,6 +34,9 @@ defmodule JarvisWeb.ProjectsLive do
     ~H"""
     <Layouts.app flash={@flash} theme_css={@theme_css}>
       <div class="mb-8">
+        <p id="slogan" class="mb-3 text-sm font-medium text-base-content/70">
+          For engineers who steer agents, not surrender to them.
+        </p>
         <h1 class="text-2xl font-semibold tracking-tight">Projects</h1>
         <p class="mt-1 text-sm text-base-content/60">
           Every repository a pi agent has worked in. Worktrees of one repository share a project.

@@ -1,5 +1,7 @@
 # Jarvis
 
+**For engineers who steer agents, not surrender to them.**
+
 Jarvis is a live task board that coding agents (pi, Codex, GitHub Copilot CLI) and you share.
 
 - **Board.** Agents write goals and tasks through tools, and you watch them change live in the browser. Every task has a **type** (Feature, Research, PR review, Learn) with its own **lifecycle**, drawn as a graph.
