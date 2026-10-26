@@ -235,12 +235,17 @@ defmodule JarvisWeb.GuideLive do
     assigns = assign(assigns, concepts: @concepts, claims: @claims, types: types, toc: toc)
 
     ~H"""
-    <Layouts.app flash={@flash} theme_css={@theme_css} crumbs={[{"Guide", ~p"/guide"}]}>
+    <Layouts.app
+      flash={@flash}
+      theme_css={@theme_css}
+      form={:explanation}
+      crumbs={[{"Guide", ~p"/guide"}]}
+    >
       <header class="max-w-3xl">
         <h1 class="text-2xl font-semibold tracking-tight">Guide</h1>
         <p class="mt-2 text-base-content/70">
-          How goals, tasks, and their steps fit together, and how you and the agents take a task
-          of each type to Done: what you type to the agent, what it does, and what you do on the board.
+          How goals, tasks, and their steps fit together. How you and the agents take each task type to Done:
+          what you type, what the agent does, and what you do on the board.
         </p>
         <nav id="guide-nav" class="mt-4 flex flex-wrap gap-1.5 text-sm" aria-label="On this page">
           <a
@@ -270,11 +275,11 @@ defmodule JarvisWeb.GuideLive do
       <section id="claims" class="mt-10 scroll-mt-20">
         <h2 class="text-lg font-semibold">Claims and sessions</h2>
         <div class="mt-1 max-w-3xl text-sm text-base-content/70">
-          <.markdown text="A claim belongs to one worktree, not to a session or a harness, so different worktrees work on different tasks at the same time. Every session in the claiming worktree can work on the task, in any harness. Only `design` and `poc` claim a task; you release a claim with **Release claim** on the task page." />
+          <.markdown text="A claim belongs to one worktree, not to a session or a harness. So different worktrees can work on different tasks at the same time. Every session in the claiming worktree can work on the task, in any harness. Only `design` and `poc` claim a task; you release a claim with **Release claim** on the task page." />
         </div>
         <div class="mt-3 overflow-x-auto rounded-2xl border border-base-300 bg-base-100">
           <table class="w-full text-left text-sm">
-            <thead class="bg-base-200/60 text-xs uppercase tracking-wide text-base-content/60">
+            <thead class="bg-base-200/60 text-xs uppercase tracking-wide text-base-content/70">
               <tr>
                 <th class="px-4 py-2 font-medium">Task type</th>
                 <th class="px-4 py-2 font-medium">You switch to</th>
@@ -303,8 +308,8 @@ defmodule JarvisWeb.GuideLive do
           <h2 class="text-lg font-semibold">Comments</h2>
           <p class="mt-1 text-sm text-base-content/70">
             Every widget, and every part of one, has a comment button. Your comment reaches the
-            task's listening session (the live session focused on the task, else one in the
-            claiming worktree) at the start of its next turn. An idle session is never woken by a
+            task's listening session at the start of its next turn. That is the live session focused on
+            the task, or else one in the claiming worktree. An idle session is never woken by a
             comment. When no session listens, the comment waits, and the thread says so.
           </p>
         </section>
@@ -312,8 +317,8 @@ defmodule JarvisWeb.GuideLive do
           <h2 class="text-lg font-semibold">Gate quizzes</h2>
           <p class="mt-1 text-sm text-base-content/70">
             A quiz in gate mode names a transition, such as <em>passed</em> in a Learn task.
-            It blocks the transition it names until every question is answered correctly;
-            until then the move on the task page says why it is blocked.
+            It blocks the transition it names until every question is answered correctly.
+            Until then, the move on the task page says why it is blocked.
           </p>
         </section>
       </div>
@@ -329,8 +334,9 @@ defmodule JarvisWeb.GuideLive do
             </p>
             <p class="mt-2 text-sm text-base-content/70">
               Builds every task of a goal in one go, in this worktree, so you see a result fast.
-              It moves the tasks past your transitions, leaves a comment on every task it builds,
-              and marks the goal POC until you click <strong>Mark reviewed</strong> on the goal page.
+              It moves the tasks past your transitions and leaves a comment on every task it builds.
+              The goal stays marked POC until you click <strong>Mark reviewed</strong>
+              on the goal page.
             </p>
           </div>
           <div id="workflow-eli5" class="rounded-2xl border border-base-300 bg-base-100 p-4">
@@ -421,7 +427,7 @@ defmodule JarvisWeb.GuideLive do
       </div>
 
       <h3 class="mt-6 font-semibold">Example flow</h3>
-      <div class="mt-2 hidden grid-cols-[2rem_1fr_1fr_1fr] gap-3 px-3 text-xs uppercase tracking-wide text-base-content/50 md:grid">
+      <div class="mt-2 hidden grid-cols-[2rem_1fr_1fr_1fr] gap-3 px-3 text-xs uppercase tracking-wide text-base-content/70 md:grid">
         <span></span><span>You type</span><span>The agent</span><span>On the board</span>
       </div>
       <ol id={"#{@anchor}-flow"} class="mt-1 space-y-2">
@@ -436,10 +442,10 @@ defmodule JarvisWeb.GuideLive do
           </span>
           <div data-role="say">
             <.prompt :if={s.say} text={s.say} />
-            <span :if={!s.say} class="italic text-base-content/50">You type nothing.</span>
+            <span :if={!s.say} class="italic text-base-content/70">You type nothing.</span>
           </div>
           <p data-role="agent">{s.agent}</p>
-          <p data-role="board" class={!s.board && "italic text-base-content/50"}>
+          <p data-role="board" class={!s.board && "italic text-base-content/70"}>
             {s.board || "Nothing."}
           </p>
           <p
@@ -481,7 +487,7 @@ defmodule JarvisWeb.GuideLive do
           class="size-4 text-base-content/70"
         />
         <p class="font-medium">{@t.name}</p>
-        <span class="ml-auto text-xs text-base-content/60">
+        <span class="ml-auto text-xs text-base-content/70">
           <span data-role="from">{TaskType.step_label(@type, @t.from)}</span>
           → <span data-role="to">{TaskType.step_label(@type, @t.to)}</span>
         </span>

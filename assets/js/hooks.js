@@ -153,4 +153,69 @@ export const PanZoom = {
   },
 }
 
-export default {Mermaid, PanZoom}
+// Keeps what the human typed or picked in a form (an unsent comment, quiz
+// answers) in this browser until it is sent, so leaving the page loses nothing.
+export const Draft = {
+  mounted() {
+    this.key = `jarvis:draft:${location.pathname}:${this.el.dataset.draftKey || this.el.id}`
+    this.restore()
+    this.el.addEventListener("input", () => this.save())
+    this.el.addEventListener("change", () => this.save())
+    this.el.addEventListener("submit", () => localStorage.removeItem(this.key))
+  },
+  fields() {
+    return [...this.el.elements].filter((f) => f.name && !["hidden", "submit", "button"].includes(f.type))
+  },
+  save() {
+    const data = {}
+    for (const f of this.fields()) {
+      if (f.type === "radio" || f.type === "checkbox") {
+        if (f.checked) (data[f.name] ||= []).push(f.value)
+      } else if (f.value) {
+        data[f.name] = f.value
+      }
+    }
+    if (Object.keys(data).length) localStorage.setItem(this.key, JSON.stringify(data))
+    else localStorage.removeItem(this.key)
+  },
+  restore() {
+    let data
+    try {
+      data = JSON.parse(localStorage.getItem(this.key))
+    } catch {
+      return
+    }
+    if (!data) return
+    for (const f of this.fields()) {
+      if (f.type === "radio" || f.type === "checkbox") {
+        if (data[f.name]) f.checked = data[f.name].includes(f.value)
+      } else if (data[f.name] && !f.value) {
+        f.value = data[f.name]
+      }
+    }
+  },
+}
+
+// The display settings form: shows the current settings and applies every
+// change at once through window.jarvisDisplay (assets/js/display.js).
+export const DisplaySettings = {
+  mounted() {
+    this.show(window.jarvisDisplay.current())
+    this.el.addEventListener("change", () => {
+      const settings = Object.fromEntries(new FormData(this.el))
+      this.show(window.jarvisDisplay.set(settings))
+    })
+    this.el.addEventListener("reset", (e) => {
+      e.preventDefault()
+      this.show(window.jarvisDisplay.reset())
+    })
+  },
+  show(settings) {
+    for (const [name, value] of Object.entries(settings)) {
+      const input = this.el.querySelector(`input[name="${name}"][value="${value}"]`)
+      if (input) input.checked = true
+    }
+  },
+}
+
+export default {Mermaid, PanZoom, Draft, DisplaySettings}

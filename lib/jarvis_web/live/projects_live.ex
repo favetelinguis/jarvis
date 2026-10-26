@@ -32,13 +32,13 @@ defmodule JarvisWeb.ProjectsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} theme_css={@theme_css}>
+    <Layouts.app flash={@flash} theme_css={@theme_css} form={:reference}>
       <div class="mb-8">
         <p id="slogan" class="mb-3 text-sm font-medium text-base-content/70">
           For engineers who steer agents, not surrender to them.
         </p>
         <h1 class="text-2xl font-semibold tracking-tight">Projects</h1>
-        <p class="mt-1 text-sm text-base-content/60">
+        <p class="mt-1 text-sm text-base-content/70">
           Every repository a pi agent has worked in. Worktrees of one repository share a project.
         </p>
       </div>
@@ -48,9 +48,9 @@ defmodule JarvisWeb.ProjectsLive do
         id="no-projects"
         class="rounded-2xl border border-dashed border-base-300 p-10 text-center"
       >
-        <.icon name="hero-sparkles" class="size-8 text-base-content/30" />
+        <.icon name="hero-sparkles" class="size-8 text-base-content/70" />
         <p class="mt-3 font-medium">No projects yet</p>
-        <p class="mt-1 text-sm text-base-content/60">
+        <p class="mt-1 text-sm text-base-content/70">
           Start pi with the Jarvis extension in any git repository and run <code class="rounded bg-base-200 px-1">/specify</code>.
         </p>
       </div>
@@ -65,7 +65,7 @@ defmodule JarvisWeb.ProjectsLive do
           <div class="flex items-start justify-between gap-2">
             <div class="min-w-0">
               <h2 class="truncate font-semibold">{row.project.name}</h2>
-              <p class="truncate font-mono text-xs text-base-content/50" title={row.project.key}>
+              <p class="truncate font-mono text-xs text-base-content/70" title={row.project.key}>
                 {row.project.key}
               </p>
             </div>
@@ -77,13 +77,13 @@ defmodule JarvisWeb.ProjectsLive do
             </span>
           </div>
           <div class="mt-4 flex items-center gap-2">
-            <span class="inline-flex items-center gap-1 text-xs text-base-content/60">
+            <span class="inline-flex items-center gap-1 text-xs text-base-content/70">
               <.step_badge step="open" label="open" /> {Map.get(row.counts, :open, 0)}
             </span>
-            <span class="inline-flex items-center gap-1 text-xs text-base-content/60">
+            <span class="inline-flex items-center gap-1 text-xs text-base-content/70">
               <.step_badge step="done" label="done" /> {Map.get(row.counts, :done, 0)}
             </span>
-            <span class="ml-auto text-xs text-base-content/40">
+            <span class="ml-auto text-xs text-base-content/70">
               <.time_ago at={row.project.updated_at} now={@now} />
             </span>
           </div>

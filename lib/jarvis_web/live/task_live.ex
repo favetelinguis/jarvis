@@ -24,8 +24,13 @@ defmodule JarvisWeb.TaskLive do
     |> assign(:form, to_form(%{"body" => ""}, as: :comment))
     |> assign(:ui, %{})
     |> assign(:composer, nil)
+    |> assign(:confirming, nil)
     |> load()
   end
+
+  @impl true
+  def handle_params(params, _uri, socket),
+    do: {:noreply, assign(socket, :section_param, params["section"])}
 
   @impl true
   def handle_info({:jarvis, :changed}, socket) do
@@ -46,7 +51,15 @@ defmodule JarvisWeb.TaskLive do
     end
   end
 
+  def handle_event("move_ask", %{"transition" => name}, socket),
+    do: {:noreply, assign(socket, :confirming, name)}
+
+  def handle_event("move_cancel", _params, socket),
+    do: {:noreply, assign(socket, :confirming, nil)}
+
   def handle_event("move", %{"transition" => name}, socket) do
+    socket = assign(socket, :confirming, nil)
+
     case Planning.move_task(socket.assigns.scope, socket.assigns.task, name) do
       {:ok, _} -> {:noreply, socket}
       {:error, _} -> {:noreply, put_flash(socket, :error, "That move is not allowed right now.")}
@@ -81,8 +94,15 @@ defmodule JarvisWeb.TaskLive do
         {:ok,
          socket
          |> assign(:task, task)
+         |> assign(
+           :glossary,
+           JarvisWeb.WidgetComponents.glossary(
+             Planning.list_widgets(task.goal, nil),
+             Jarvis.Language.current()
+           )
+         )
          |> assign(:goal, task.goal)
-         |> assign(:widgets, widgets)
+         |> JarvisWeb.WidgetEvents.assign_widgets(widgets)
          |> assign(:anchored, anchored)
          |> assign(:plain, plain)
          |> assign(:transitions, transitions)
@@ -100,40 +120,59 @@ defmodule JarvisWeb.TaskLive do
     end
   end
 
+  # The section in the URL, else the first one with widgets, else the first.
+  defp current_section(sections, widgets, param) do
+    keys = Enum.map(sections, &elem(&1, 0))
+    filled = MapSet.new(widgets, & &1.section)
+
+    cond do
+      param in keys -> param
+      key = Enum.find(keys, &MapSet.member?(filled, &1)) -> key
+      true -> hd(keys)
+    end
+  end
+
   @impl true
   def render(%{task: nil} = assigns), do: ~H""
 
   def render(assigns) do
     ids = MapSet.new(assigns.widgets, & &1.id)
+    sections = TaskType.sections(assigns.task.type)
+    current = current_section(sections, assigns.widgets, assigns[:section_param])
     {live, removed} = Enum.split_with(assigns.anchored, &(&1.widget_id in ids))
 
     assigns =
       assign(assigns,
         removed: Enum.filter(removed, &(&1.widget_id == nil)),
+        sections: sections,
+        current: current,
         ctx:
           context(
             ui: assigns.ui,
             comments: live,
             composer: assigns.composer,
             listening: Jarvis.Workspaces.AgentSession.listening(assigns.listener),
+            changed: assigns.changed,
+            glossary: assigns.glossary,
             now: assigns.now
           )
       )
 
     ~H"""
     <Layouts.app
+      form={JarvisWeb.Diataxis.task_page(@task.type)}
       flash={@flash}
       theme_css={@theme_css}
       crumbs={[
         {@scope.project.name, ~p"/projects/#{@scope.project}"},
         {"Goal #{@task.goal.number}", ~p"/projects/#{@scope.project}/goals/#{@task.goal.number}"},
-        {"Task #{@task.goal.number}.#{@task.number}",
+        {"Task #{@task.goal.number}.#{@task.number} (#{TaskType.step_label(@task.type, @task.step)})",
          ~p"/projects/#{@scope.project}/goals/#{@task.goal.number}/tasks/#{@task.number}"}
       ]}
     >
       <header class="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div class="min-w-0">
-          <p class="font-mono text-xs text-base-content/60">
+          <p class="font-mono text-xs text-base-content/70">
             Task {@task.goal.number}.{@task.number} · {@task.goal.title}
           </p>
           <h1 class="mt-1 text-2xl font-semibold tracking-tight">{@task.title}</h1>
@@ -142,6 +181,21 @@ defmodule JarvisWeb.TaskLive do
             <.type_badge type={@task.type} />
             <.step_badge step={@task.step} label={TaskType.step_label(@task.type, @task.step)} />
             <.worktree_chip worktree={@task.worktree} />
+          </div>
+          <div id="where-next" class="mt-3 text-sm">
+            <p>
+              You are in step <strong>{TaskType.step_label(@task.type, @task.step)}</strong>
+              of task {@task.goal.number}.{@task.number}.
+            </p>
+            <p :if={@transitions == []}>Next: nothing. This step ends the lifecycle.</p>
+            <p :if={@transitions != []}>
+              Next:
+              <%= for {%{t: t, unmet: unmet}, i} <- Enum.with_index(@transitions) do %>
+                <span :if={i > 0}>; </span>
+                <a href={"#transition-#{String.replace(t.name, " ", "-")}"} class="underline">{t.name}</a>
+                ({if t.mover == :human, do: "you", else: "an agent"}<span :if={unmet != []}>, blocked</span>)
+              <% end %>
+            </p>
           </div>
         </div>
 
@@ -162,7 +216,7 @@ defmodule JarvisWeb.TaskLive do
           <.link
             id="lifecycle-guide"
             navigate={JarvisWeb.GuideLive.path(@task.type)}
-            class="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-base-content/60 transition hover:bg-base-200 hover:text-base-content"
+            class="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
           >
             <.icon name="hero-book-open-mini" class="size-4" /> Guide
           </.link>
@@ -172,12 +226,25 @@ defmodule JarvisWeb.TaskLive do
           step={@task.step}
           previous={@task.previous_step}
           transitions={@transitions}
+          confirming={@confirming}
         />
       </.panel>
 
       <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <article class="space-y-8">
-          <.sections sections={TaskType.sections(@task.type)} widgets={@widgets} ctx={@ctx} />
+          <.section_toc
+            sections={@sections}
+            widgets={@widgets}
+            type={@task.type}
+            current={@current}
+            path={~p"/projects/#{@scope.project}/goals/#{@task.goal.number}/tasks/#{@task.number}"}
+          />
+          <.sections
+            sections={Enum.filter(@sections, &(elem(&1, 0) == @current))}
+            widgets={@widgets}
+            ctx={@ctx}
+            type={@task.type}
+          />
           <.removed_anchors comments={@removed} />
         </article>
 

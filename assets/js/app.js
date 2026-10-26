@@ -38,6 +38,16 @@ topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
+// A glossary term in a widget shows its meaning right after it (see PlanningComponents.markdown/1).
+document.addEventListener("click", (e) => {
+  const term = e.target.closest("[data-term]")
+  if (!term) return
+  const meaning = term.nextElementSibling
+  const open = term.getAttribute("aria-expanded") === "true"
+  term.setAttribute("aria-expanded", String(!open))
+  meaning.hidden = open
+})
+
 // connect if there are any LiveViews on the page
 liveSocket.connect()
 

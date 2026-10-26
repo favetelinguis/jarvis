@@ -13,11 +13,12 @@ defmodule JarvisWeb.WidgetComponents do
   use Phoenix.Component
 
   import JarvisWeb.CoreComponents, only: [icon: 1]
-  import JarvisWeb.PlanningComponents, only: [markdown: 1, time_ago: 1]
+  import JarvisWeb.PlanningComponents, only: [form_badge: 1, markdown: 1, time_ago: 1]
 
   alias Jarvis.Planning
   alias Jarvis.Planning.{Catalog, TaskType}
   alias JarvisWeb.GraphLayout
+  alias Phoenix.LiveView.JS
 
   ## Sections
 
@@ -25,8 +26,9 @@ defmodule JarvisWeb.WidgetComponents do
   attr :widgets, :list, required: true
   attr :ctx, :map, required: true
   attr :prefix, :string, default: "section"
+  attr :type, :atom, required: true, doc: "`:goal` or the task type; decides each section's form"
 
-  @doc "The sections of a goal or task, each with its widgets in order."
+  @doc "The sections of a goal or task, each with its widgets in order and its Diátaxis form."
   def sections(assigns) do
     ~H"""
     <section
@@ -34,18 +36,64 @@ defmodule JarvisWeb.WidgetComponents do
       id={"#{@prefix}-#{key}"}
       class="space-y-3"
     >
-      <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-base-content/60">
+      <h2 class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-base-content/70">
         <span class="h-3 w-1 rounded-full bg-primary" /> {label}
+        <.form_badge
+          id={"#{@prefix}-#{key}-form"}
+          form={JarvisWeb.Diataxis.section(@type, key)}
+        />
       </h2>
       <% in_section = Enum.filter(@widgets, &(&1.section == key)) %>
       <p
         :if={in_section == []}
-        class="rounded-xl border border-dashed border-base-300 px-4 py-3 text-sm italic text-base-content/60"
+        class="rounded-xl border border-dashed border-base-300 px-4 py-3 text-sm italic text-base-content/70"
       >
         Nothing here yet. Agents fill this with: {Enum.join(recommended, ", ")}.
       </p>
       <.widget :for={w <- in_section} w={w} ctx={@ctx} />
     </section>
+    """
+  end
+
+  attr :sections, :list, required: true
+  attr :widgets, :list, required: true
+  attr :type, :atom, required: true
+  attr :current, :string, required: true
+  attr :path, :string, required: true, doc: "the page; each entry patches `?section=key` onto it"
+
+  @doc """
+  The contents of a task: every section with its number of widgets and its
+  Diátaxis form. The page shows one section at a time, the current one.
+  """
+  def section_toc(assigns) do
+    ~H"""
+    <nav
+      id="section-toc"
+      aria-label="Sections"
+      class="rounded-2xl border border-base-300 bg-base-100 p-3"
+    >
+      <h2 class="px-1 text-sm font-semibold">Sections</h2>
+      <ol class="mt-2 grid gap-1 sm:grid-cols-2 xl:grid-cols-3">
+        <li :for={{key, label, _} <- @sections}>
+          <% count = Enum.count(@widgets, &(&1.section == key)) %>
+          <.link
+            id={"toc-#{key}"}
+            patch={"#{@path}?section=#{key}"}
+            aria-current={if key == @current, do: "true"}
+            class={[
+              "flex min-h-11 flex-wrap items-center gap-2 rounded-lg px-2 py-1 text-sm transition hover:bg-base-200",
+              key == @current && "bg-base-200 font-semibold ring-2 ring-base-content"
+            ]}
+          >
+            <span>{label}</span>
+            <span class="text-base-content/70">
+              {count} {if count == 1, do: "widget", else: "widgets"}
+            </span>
+            <.form_badge form={JarvisWeb.Diataxis.section(@type, key)} />
+          </.link>
+        </li>
+      </ol>
+    </nav>
     """
   end
 
@@ -63,14 +111,35 @@ defmodule JarvisWeb.WidgetComponents do
           Enum.count(assigns.ctx.comments, &(&1.widget_id == assigns.w.id and &1.part == nil))
       )
 
+    assigns = assign(assigns, :changed?, MapSet.member?(assigns.ctx.changed, assigns.w.id))
+
     ~H"""
     <article
       id={"widget-#{@w.id}"}
-      class="group/widget group/part rounded-2xl border border-base-300 bg-base-100 shadow-sm transition hover:border-primary/40"
+      data-changed={to_string(@changed?)}
+      class={[
+        "group/widget group/part rounded-2xl border bg-base-100 shadow-sm transition hover:border-primary/40",
+        if(@changed?, do: "border-2 border-dashed border-base-content/70", else: "border-base-300")
+      ]}
     >
-      <header class="flex items-center gap-2 px-4 pt-3 text-xs text-base-content/60">
+      <header class="flex flex-wrap items-center gap-2 px-4 pt-3 text-xs text-base-content/70">
         <span class="font-medium">{Catalog.label(@w.kind)}</span>
-        <span class="font-mono text-base-content/50">W{@w.id}</span>
+        <span class="font-mono text-base-content/70">W{@w.id}</span>
+        <span
+          :if={@changed?}
+          id={"changed-#{@w.id}"}
+          class="inline-flex items-center gap-1 rounded-md bg-base-content px-1.5 py-0.5 font-semibold text-base-100"
+        >
+          Updated by an agent
+          <button
+            type="button"
+            phx-click="widget:seen"
+            phx-value-widget={@w.id}
+            class="underline"
+          >
+            Mark as read
+          </button>
+        </span>
         <span class="ml-auto" />
         <.part_button w={@w} ctx={@ctx} />
       </header>
@@ -79,14 +148,14 @@ defmodule JarvisWeb.WidgetComponents do
       </div>
 
       <details :if={@ctx.sandbox} class="border-t border-base-200 px-4 py-2 text-xs">
-        <summary class="cursor-pointer select-none font-medium text-base-content/60">
+        <summary class="cursor-pointer select-none font-medium text-base-content/70">
           What the agent sees and writes
         </summary>
-        <p class="mt-2 text-base-content/60">
+        <p class="mt-2 text-base-content/70">
           The agent writes this data with <code>jarvis_widgets</code>, and reads the text below.
         </p>
-        <pre class="mt-2 overflow-x-auto rounded-lg bg-base-200 p-3 font-mono text-[11px] leading-relaxed">{Jason.encode!(@w.data, pretty: true)}</pre>
-        <pre class="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-base-200 p-3 font-mono text-[11px] leading-relaxed">{Catalog.text(@w)}</pre>
+        <pre class="mt-2 overflow-x-auto rounded-lg bg-base-200 p-3 font-mono text-[0.6875rem] leading-relaxed">{Jason.encode!(@w.data, pretty: true)}</pre>
+        <pre class="mt-2 overflow-x-auto whitespace-pre-wrap rounded-lg bg-base-200 p-3 font-mono text-[0.6875rem] leading-relaxed">{Catalog.text(@w)}</pre>
       </details>
 
       <div
@@ -130,22 +199,18 @@ defmodule JarvisWeb.WidgetComponents do
 
     ~H"""
     <button
+      id={comment_button_id(@w.id, @part)}
       type="button"
       phx-click="widget:compose"
       phx-value-widget={@w.id}
       phx-value-part={@part}
       aria-label={if @part, do: "Comment on #{@part}", else: "Comment on this widget"}
       title={if @part, do: "Comment on #{@part}", else: "Comment on this widget"}
-      class={[
-        "inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[11px] text-base-content/60 transition hover:bg-primary/10 hover:text-primary focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-primary",
-        if(@count > 0,
-          do: "opacity-100",
-          else: "opacity-0 group-hover/part:opacity-100 group-focus-within/part:opacity-100"
-        )
-      ]}
+      class="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-medium text-base-content/70 transition hover:bg-primary/10 hover:text-primary"
     >
       <.icon name="hero-chat-bubble-left-ellipsis-mini" class="size-3.5" />
-      <span :if={@count > 0}>{@count}</span>
+      <span aria-hidden="true">Comment</span>
+      <span :if={@count > 0}>({@count})</span>
     </button>
     """
   end
@@ -164,12 +229,12 @@ defmodule JarvisWeb.WidgetComponents do
 
     ~H"""
     <div id={"thread-#{@w.id}-#{@group.part || "widget"}"} class="space-y-2">
-      <p class="flex items-center gap-2 text-[11px] font-medium text-base-content/60">
+      <p class="flex items-center gap-2 text-[0.6875rem] font-medium text-base-content/70">
         <.icon name="hero-chat-bubble-left-right-mini" class="size-3.5" />
         {@group.label}
         <span
           :if={@group.gone?}
-          class="rounded bg-warning/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-base-content/70"
+          class="rounded bg-warning/20 px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase text-base-content/70"
         >
           Part removed
         </span>
@@ -199,8 +264,8 @@ defmodule JarvisWeb.WidgetComponents do
             "min-w-0 flex-1 text-sm",
             c.author == :system && "italic text-base-content/70"
           ]}>
-            <.markdown text={c.body} class="text-sm" />
-            <span class="text-[11px] text-base-content/50">
+            <.markdown glossary={@ctx.glossary} text={c.body} class="text-sm" />
+            <span class="text-[0.6875rem] text-base-content/70">
               <.time_ago at={c.inserted_at} now={@ctx.now} />
             </span>
           </div>
@@ -210,7 +275,7 @@ defmodule JarvisWeb.WidgetComponents do
         :if={@waiting?}
         id={"thread-status-#{@w.id}-#{@group.part || "widget"}"}
         class={[
-          "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium",
+          "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[0.6875rem] font-medium",
           if(@ctx.listening,
             do: "bg-primary/10 text-primary",
             else: "bg-warning/20 text-base-content/70"
@@ -235,26 +300,39 @@ defmodule JarvisWeb.WidgetComponents do
   attr :ctx, :map, required: true
 
   defp composer(assigns) do
-    assigns = assign(assigns, :label, Planning.anchor_label(assigns.w, assigns.ctx.composer.part))
+    %{w: w, ctx: %{composer: %{part: part}}} = assigns
+
+    assigns =
+      assign(assigns,
+        label: Planning.anchor_label(w, part),
+        # Sending or cancelling hands focus back to the button that opened it.
+        opener: comment_button_id(w.id, part)
+      )
 
     ~H"""
-    <form id={"composer-#{@w.id}"} phx-submit="widget:comment" class="space-y-2">
-      <label for={"composer-body-#{@w.id}"} class="text-[11px] font-medium text-base-content/70">
-        Commenting on {@label}
+    <form
+      id={"composer-#{@w.id}"}
+      phx-submit={JS.push("widget:comment") |> JS.focus(to: "#" <> @opener)}
+      phx-hook="Draft"
+      data-draft-key={"composer-#{@w.id}-#{@ctx.composer.part}"}
+      class="space-y-2"
+    >
+      <label for={"composer-body-#{@w.id}"} class="text-[0.6875rem] font-medium text-base-content/70">
+        Commenting on {@label} (required)
       </label>
       <textarea
         id={"composer-body-#{@w.id}"}
         name="body"
         rows="2"
         required
-        phx-mounted={Phoenix.LiveView.JS.focus()}
+        phx-mounted={JS.focus()}
         placeholder="Ask a question, or tell the agent what to change here…"
         class="w-full rounded-lg border border-base-300 bg-base-100 px-3 py-2 text-sm outline-none focus:border-primary focus:ring-4 focus:ring-primary/10"
       />
       <div class="flex justify-end gap-2">
         <button
           type="button"
-          phx-click="widget:cancel"
+          phx-click={JS.push("widget:cancel") |> JS.focus(to: "#" <> @opener)}
           class="rounded-lg px-3 py-1.5 text-sm text-base-content/70 hover:bg-base-200"
         >
           Cancel
@@ -263,7 +341,7 @@ defmodule JarvisWeb.WidgetComponents do
           type="submit"
           class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-content transition hover:opacity-90 active:scale-[0.98]"
         >
-          Send
+          Send comment
         </button>
       </div>
     </form>
@@ -280,20 +358,20 @@ defmodule JarvisWeb.WidgetComponents do
       id="removed-anchors"
       class="rounded-2xl border border-dashed border-base-300 p-4"
     >
-      <h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/60">
+      <h2 class="text-xs font-semibold uppercase tracking-wider text-base-content/70">
         Removed anchors
       </h2>
       <ul class="mt-2 space-y-3">
         <li :for={c <- @comments} id={"removed-#{c.id}"} class="text-sm">
-          <p class="flex items-center gap-2 text-[11px] font-medium text-base-content/60">
+          <p class="flex items-center gap-2 text-[0.6875rem] font-medium text-base-content/70">
             {c.anchor_label}
-            <span class="rounded bg-warning/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase">
+            <span class="rounded bg-warning/20 px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase">
               Widget removed
             </span>
           </p>
           <blockquote
             :if={c.anchor_text}
-            class="mt-1 border-l-2 border-base-300 pl-2 text-xs text-base-content/60"
+            class="mt-1 border-l-2 border-base-300 pl-2 text-xs text-base-content/70"
           >
             {String.slice(c.anchor_text, 0, 240)}
           </blockquote>
@@ -311,26 +389,32 @@ defmodule JarvisWeb.WidgetComponents do
 
   defp body(%{w: %{kind: "prose"}} = assigns) do
     ~H"""
-    <.markdown text={@w.data["text"]} />
+    <.markdown glossary={@ctx.glossary} text={@w.data["text"]} />
     """
   end
 
   defp body(%{w: %{kind: "callout"}} = assigns) do
-    {icon, style} =
+    {icon, style, tone} =
       case assigns.w.data["tone"] do
-        "info" -> {"hero-information-circle", "border-info/60 bg-info/10"}
-        "warning" -> {"hero-exclamation-triangle", "border-warning/70 bg-warning/10"}
-        "risk" -> {"hero-shield-exclamation", "border-error/60 bg-error/10"}
+        "info" -> {"hero-information-circle", "border-info/60 bg-info/10", "Info"}
+        "warning" -> {"hero-exclamation-triangle", "border-warning/70 bg-warning/10", "Warning"}
+        "risk" -> {"hero-shield-exclamation", "border-error/60 bg-error/10", "Risk"}
       end
 
-    assigns = assign(assigns, icon: icon, style: style)
+    assigns = assign(assigns, icon: icon, style: style, tone: tone)
 
     ~H"""
     <div class={["flex gap-3 rounded-xl border-l-4 px-4 py-3", @style]}>
       <.icon name={@icon} class="mt-0.5 size-5 shrink-0" />
       <div class="min-w-0">
+        <p class="text-[0.6875rem] font-semibold uppercase tracking-wide">{@tone}</p>
         <p class="font-semibold">{@w.data["title"]}</p>
-        <.markdown :if={@w.data["body"]} text={@w.data["body"]} class="mt-1 text-sm" />
+        <.markdown
+          :if={@w.data["body"]}
+          glossary={@ctx.glossary}
+          text={@w.data["body"]}
+          class="mt-1 text-sm"
+        />
       </div>
     </div>
     """
@@ -365,7 +449,7 @@ defmodule JarvisWeb.WidgetComponents do
           {@d["id"]}
         </span>
         <span class={[
-          "rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+          "rounded-full px-2 py-0.5 text-[0.6875rem] font-semibold uppercase tracking-wide",
           @style
         ]}>
           {@d["pattern"]}
@@ -383,7 +467,11 @@ defmodule JarvisWeb.WidgetComponents do
           :if={@keyword}
           class="min-w-0 flex-1 rounded-lg bg-base-100 px-3 py-2 ring-1 ring-base-300"
         >
-          <p class={["text-[10px] font-bold uppercase tracking-wider", @style, "w-fit rounded px-1"]}>
+          <p class={[
+            "text-[0.625rem] font-bold uppercase tracking-wider",
+            @style,
+            "w-fit rounded px-1"
+          ]}>
             {@keyword}
           </p>
           <p class="mt-1">{@d["trigger"]}</p>
@@ -391,17 +479,17 @@ defmodule JarvisWeb.WidgetComponents do
         <.icon
           :if={@keyword}
           name="hero-arrow-right"
-          class="hidden size-4 shrink-0 text-base-content/50 md:block"
+          class="hidden size-4 shrink-0 text-base-content/70 md:block"
         />
-        <div class="min-w-0 rounded-lg bg-base-100 px-3 py-2 ring-1 ring-base-300 md:w-40 md:shrink-0">
-          <p class="text-[10px] font-bold uppercase tracking-wider text-base-content/60">
+        <div class="min-w-0 rounded-lg bg-base-100 px-3 py-2 ring-1 ring-base-300 md:w-40 md:max-w-[25%] md:shrink-0">
+          <p class="text-[0.625rem] font-bold uppercase tracking-wider text-base-content/70">
             the system
           </p>
           <p class="mt-1 font-medium">{@d["system"]}</p>
         </div>
-        <.icon name="hero-arrow-right" class="hidden size-4 shrink-0 text-base-content/50 md:block" />
+        <.icon name="hero-arrow-right" class="hidden size-4 shrink-0 text-base-content/70 md:block" />
         <div class="min-w-0 flex-1 rounded-lg bg-primary/10 px-3 py-2 ring-1 ring-primary/40">
-          <p class="text-[10px] font-bold uppercase tracking-wider text-primary">shall</p>
+          <p class="text-[0.625rem] font-bold uppercase tracking-wider text-primary">shall</p>
           <p class="mt-1">{@d["response"]}</p>
         </div>
       </div>
@@ -542,7 +630,7 @@ defmodule JarvisWeb.WidgetComponents do
       <.icon name="hero-book-open" class="mt-1 size-5 shrink-0 text-primary" />
       <div class="min-w-0">
         <p class="text-lg font-semibold">{@w.data["term"]}</p>
-        <.markdown text={@w.data["meaning"]} class="text-sm" />
+        <.markdown glossary={@ctx.glossary} text={@w.data["meaning"]} class="text-sm" />
         <p :if={@w.data["limits"]} class="mt-2 text-sm text-base-content/70">
           <span class="font-semibold">Limits:</span> {@w.data["limits"]}
         </p>
@@ -557,7 +645,7 @@ defmodule JarvisWeb.WidgetComponents do
       <.icon name="hero-scale" class="mt-1 size-5 shrink-0 text-accent" />
       <div class="min-w-0">
         <p class="font-semibold">{@w.data["decision"]}</p>
-        <.markdown text={@w.data["reason"]} class="text-sm" />
+        <.markdown glossary={@ctx.glossary} text={@w.data["reason"]} class="text-sm" />
         <div
           :if={(@w.data["alternatives"] || []) != []}
           class="mt-2 flex flex-wrap items-center gap-1.5 text-xs"
@@ -601,7 +689,7 @@ defmodule JarvisWeb.WidgetComponents do
         data-had-error={to_string(@error != nil)}
         class="overflow-x-auto rounded-xl bg-base-200/40 p-3 [&_svg]:mx-auto [&_svg]:max-w-full [&_.node]:cursor-pointer [&_.edgeLabel]:cursor-pointer"
       />
-      <p class="mt-1 text-[11px] text-base-content/60">
+      <p class="mt-1 text-[0.6875rem] text-base-content/70">
         Click a node, edge, or message to comment on it.
       </p>
     </div>
@@ -616,15 +704,6 @@ defmodule JarvisWeb.WidgetComponents do
     "queue" => "rounded-md border-2 border-double border-accent bg-base-100 border-4",
     "external" => "rounded-xl border-2 border-dashed border-base-content/50 bg-base-200"
   }
-  @node_icon %{
-    "person" => "hero-user",
-    "service" => "hero-server",
-    "component" => "hero-puzzle-piece",
-    "datastore" => "hero-circle-stack",
-    "queue" => "hero-queue-list",
-    "external" => "hero-cloud"
-  }
-
   defp body(%{w: %{kind: "architecture"}} = assigns) do
     d = assigns.w.data
     ui = assigns.ctx.ui[assigns.w.id] || %{}
@@ -649,7 +728,7 @@ defmodule JarvisWeb.WidgetComponents do
         lit_nodes: lit_nodes,
         lit_edges: lit_edges,
         node_style: @node_style,
-        node_icon: @node_icon
+        detail_at: selected && detail_position(selected, layout)
       )
 
     ~H"""
@@ -682,7 +761,7 @@ defmodule JarvisWeb.WidgetComponents do
                   phx-value-key="sel"
                   phx-value-value={"group:#{g.id}"}
                   value={"group:#{g.id}"}
-                  class="px-3 pt-1 text-[11px] font-semibold uppercase tracking-wide text-secondary"
+                  class="px-3 pt-1 text-[0.6875rem] font-semibold uppercase tracking-wide text-secondary"
                 >
                   {g.label}
                 </button>
@@ -737,7 +816,7 @@ defmodule JarvisWeb.WidgetComponents do
                     x={e.lx}
                     y={e.ly - 5}
                     text-anchor="middle"
-                    class="fill-base-content text-[11px]"
+                    class="fill-base-content text-[0.6875rem]"
                     paint-order="stroke"
                     stroke-width="4"
                     style="stroke: var(--color-base-100)"
@@ -766,70 +845,112 @@ defmodule JarvisWeb.WidgetComponents do
                 ]}
                 style={node_style(@layout.nodes[n["id"]])}
               >
-                <.icon name={@node_icon[n["kind"]]} class="size-5 shrink-0 text-base-content/70" />
                 <span class="min-w-0">
                   <span class="block truncate">{n["label"]}</span>
-                  <span class="block text-[10px] font-normal uppercase tracking-wide text-base-content/60">{n[
+                  <span class="block text-[0.625rem] font-normal uppercase tracking-wide text-base-content/70">{n[
                     "kind"
                   ]}</span>
                 </span>
               </button>
+
+              <div
+                :if={@selected_part && @detail_at}
+                id={"detail-#{@w.id}"}
+                data-pz-no-pan
+                role="note"
+                class="absolute z-10 w-64 cursor-auto rounded-xl border-2 border-base-content bg-base-100 p-3 text-sm shadow-lg"
+                style={"left: #{elem(@detail_at, 0)}px; top: #{elem(@detail_at, 1)}px"}
+              >
+                <% {label, text} = @selected_part %>
+                <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-base-content/70">
+                  {label}
+                </p>
+                <p class="mt-1 whitespace-pre-wrap">{text}</p>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    phx-click="widget:compose"
+                    phx-value-widget={@w.id}
+                    phx-value-part={@selected}
+                    class="inline-flex items-center gap-1 rounded-lg border border-base-300 px-2.5 py-1 text-xs font-medium hover:bg-base-200"
+                  >
+                    <.icon name="hero-chat-bubble-left-ellipsis-mini" class="size-3.5" />
+                    Comment on this
+                  </button>
+                  <button
+                    type="button"
+                    phx-click="widget:ui"
+                    phx-value-widget={@w.id}
+                    phx-value-key="sel"
+                    phx-value-value=""
+                    value=""
+                    class="rounded-lg px-2.5 py-1 text-xs font-medium hover:bg-base-200"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
           <div class="absolute right-2 top-2 flex flex-col gap-1">
             <button
               type="button"
               data-pz="in"
-              aria-label="Zoom in"
-              class="grid size-7 place-items-center rounded-md bg-base-100 shadow ring-1 ring-base-300 hover:bg-base-200"
-            ><.icon name="hero-plus-mini" class="size-4" /></button>
+              class="rounded-md bg-base-100 px-2 py-1 text-xs font-medium shadow ring-1 ring-base-300 hover:bg-base-200"
+            >Zoom in</button>
             <button
               type="button"
               data-pz="out"
-              aria-label="Zoom out"
-              class="grid size-7 place-items-center rounded-md bg-base-100 shadow ring-1 ring-base-300 hover:bg-base-200"
-            ><.icon name="hero-minus-mini" class="size-4" /></button>
+              class="rounded-md bg-base-100 px-2 py-1 text-xs font-medium shadow ring-1 ring-base-300 hover:bg-base-200"
+            >Zoom out</button>
             <button
               type="button"
               data-pz="fit"
-              aria-label="Fit to view"
-              class="grid size-7 place-items-center rounded-md bg-base-100 shadow ring-1 ring-base-300 hover:bg-base-200"
-            ><.icon name="hero-arrows-pointing-out-mini" class="size-4" /></button>
+              class="rounded-md bg-base-100 px-2 py-1 text-xs font-medium shadow ring-1 ring-base-300 hover:bg-base-200"
+            >Fit</button>
           </div>
         </div>
 
         <aside class="space-y-3 text-sm">
-          <div :if={@tour != []} id={"tour-#{@w.id}"} class="rounded-xl bg-base-200/60 p-3">
+          <div
+            :if={@tour != []}
+            id={"tour-#{@w.id}"}
+            tabindex="-1"
+            class="rounded-xl bg-base-200/60 p-3"
+          >
             <%= if @step do %>
-              <p class="text-[11px] font-semibold uppercase tracking-wide text-primary">
+              <p class="text-[0.6875rem] font-semibold uppercase tracking-wide text-primary">
                 Step {@index + 1} of {length(@tour)}
               </p>
               <p class="mt-1 font-semibold">{@step["title"]}</p>
-              <.markdown text={@step["narration"]} class="mt-1 text-sm" />
+              <.markdown glossary={@ctx.glossary} text={@step["narration"]} class="mt-1 text-sm" />
               <div class="mt-3 flex items-center gap-2">
                 <button
+                  :if={@index > 0}
+                  id={"tour-prev-#{@w.id}"}
                   type="button"
-                  phx-click="widget:ui"
+                  phx-click={JS.push("widget:ui") |> JS.focus(to: "#tour-#{@w.id}")}
                   phx-value-widget={@w.id}
                   phx-value-key="tour"
                   phx-value-value={@index - 1}
                   value={@index - 1}
-                  disabled={@index == 0}
                   class="rounded-lg border border-base-300 px-2.5 py-1 text-xs font-medium hover:bg-base-100 disabled:opacity-40"
                 >Previous</button>
                 <button
+                  :if={@index < length(@tour) - 1}
+                  id={"tour-next-#{@w.id}"}
                   type="button"
-                  phx-click="widget:ui"
+                  phx-click={JS.push("widget:ui") |> JS.focus(to: "#tour-#{@w.id}")}
                   phx-value-widget={@w.id}
                   phx-value-key="tour"
                   phx-value-value={@index + 1}
                   value={@index + 1}
-                  disabled={@index == length(@tour) - 1}
                   class="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-content hover:opacity-90 disabled:opacity-40"
                 >Next</button>
                 <button
+                  id={"tour-end-#{@w.id}"}
                   type="button"
-                  phx-click="widget:ui"
+                  phx-click={JS.push("widget:ui") |> JS.focus(to: "#tour-#{@w.id}")}
                   phx-value-widget={@w.id}
                   phx-value-key="tour"
                   phx-value-value=""
@@ -841,8 +962,9 @@ defmodule JarvisWeb.WidgetComponents do
               <p class="font-semibold">Guided tour</p>
               <p class="mt-1 text-xs text-base-content/70">{length(@tour)} steps, at your pace.</p>
               <button
+                id={"tour-start-#{@w.id}"}
                 type="button"
-                phx-click="widget:ui"
+                phx-click={JS.push("widget:ui") |> JS.focus(to: "#tour-#{@w.id}")}
                 phx-value-widget={@w.id}
                 phx-value-key="tour"
                 phx-value-value="0"
@@ -852,28 +974,9 @@ defmodule JarvisWeb.WidgetComponents do
             <% end %>
           </div>
 
-          <div id={"detail-#{@w.id}"} class="rounded-xl bg-base-200/60 p-3">
-            <%= if @selected_part do %>
-              <% {label, text} = @selected_part %>
-              <p class="text-[11px] font-semibold uppercase tracking-wide text-base-content/60">
-                {label}
-              </p>
-              <p class="mt-1 whitespace-pre-wrap">{text}</p>
-              <button
-                type="button"
-                phx-click="widget:compose"
-                phx-value-widget={@w.id}
-                phx-value-part={@selected}
-                class="mt-2 inline-flex items-center gap-1 rounded-lg border border-base-300 px-2.5 py-1 text-xs font-medium hover:bg-base-100"
-              >
-                <.icon name="hero-chat-bubble-left-ellipsis-mini" class="size-3.5" /> Comment on this
-              </button>
-            <% else %>
-              <p class="text-xs text-base-content/70">
-                Click a node, group, or edge to read about it and comment on it. Drag to pan, scroll to zoom.
-              </p>
-            <% end %>
-          </div>
+          <p class="rounded-xl bg-base-200/60 p-3 text-xs text-base-content/70">
+            Click a node, group, or edge to read about it right there. Drag to pan, scroll to zoom.
+          </p>
         </aside>
       </div>
     </div>
@@ -886,13 +989,17 @@ defmodule JarvisWeb.WidgetComponents do
     answered = Enum.count(d["questions"], &Map.has_key?(answers, &1["id"]))
     correct = Enum.count(d["questions"], &(get_in(answers, [&1["id"], "correct"]) == true))
 
+    total = length(d["questions"])
+    index = parse_index((assigns.ctx.ui[assigns.w.id] || %{})["q"], total) || 0
+
     assigns =
       assign(assigns,
         d: d,
         answers: answers,
         answered: answered,
         correct: correct,
-        total: length(d["questions"])
+        total: total,
+        index: index
       )
 
     ~H"""
@@ -924,16 +1031,22 @@ defmodule JarvisWeb.WidgetComponents do
         />
       </div>
 
+      <p :if={@total > 1} id={"quiz-step-#{@w.id}"} tabindex="-1" class="mb-2 text-sm font-semibold">
+        Step {@index + 1} of {@total}
+      </p>
       <ol class="space-y-4">
         <li
           :for={{q, n} <- Enum.with_index(@d["questions"], 1)}
+          :if={n == @index + 1}
           id={"question-#{@w.id}-#{q["id"]}"}
           class="group/part rounded-xl bg-base-200/50 p-3"
         >
           <% a = @answers[q["id"]] %>
           <div class="flex items-start gap-2">
-            <span class="font-mono text-xs text-base-content/60">{n}.</span>
-            <div class="min-w-0 flex-1"><.markdown text={q["prompt"]} class="font-medium" /></div>
+            <span class="font-mono text-xs text-base-content/70">{n}.</span>
+            <div class="min-w-0 flex-1">
+              <.markdown glossary={@ctx.glossary} text={q["prompt"]} class="font-medium" />
+            </div>
             <.part_button w={@w} part={"question:#{q["id"]}"} ctx={@ctx} />
           </div>
 
@@ -941,6 +1054,7 @@ defmodule JarvisWeb.WidgetComponents do
             :if={q["type"] != "text"}
             id={"answer-#{@w.id}-#{q["id"]}"}
             phx-submit="widget:answer"
+            phx-hook="Draft"
             class="mt-2 space-y-1.5"
           >
             <input type="hidden" name="widget" value={@w.id} />
@@ -1003,6 +1117,7 @@ defmodule JarvisWeb.WidgetComponents do
             :if={q["type"] == "text"}
             id={"answer-#{@w.id}-#{q["id"]}"}
             phx-submit="widget:answer"
+            phx-hook="Draft"
             class="mt-2 space-y-2"
           >
             <input type="hidden" name="widget" value={@w.id} />
@@ -1022,8 +1137,10 @@ defmodule JarvisWeb.WidgetComponents do
             <div :if={a} class="rounded-lg bg-base-100 p-2 text-sm">
               <%= cond do %>
                 <% @d["mode"] == "self_study" -> %>
-                  <p class="text-[11px] font-semibold uppercase text-base-content/60">Model answer</p>
-                  <.markdown text={q["model_answer"]} class="text-sm" />
+                  <p class="text-[0.6875rem] font-semibold uppercase text-base-content/70">
+                    Model answer
+                  </p>
+                  <.markdown glossary={@ctx.glossary} text={q["model_answer"]} class="text-sm" />
                 <% a["correct"] == nil -> %>
                   <p class="text-base-content/70">Waiting for the agent to judge your answer…</p>
                 <% true -> %>
@@ -1034,12 +1151,41 @@ defmodule JarvisWeb.WidgetComponents do
                   ]}>
                     {if a["correct"], do: "Correct", else: "Not quite"}
                   </p>
-                  <.markdown :if={a["verdict"]} text={a["verdict"]} class="text-sm" />
+                  <.markdown
+                    :if={a["verdict"]}
+                    glossary={@ctx.glossary}
+                    text={a["verdict"]}
+                    class="text-sm"
+                  />
               <% end %>
             </div>
           </form>
         </li>
       </ol>
+      <div :if={@total > 1} class="mt-3 flex gap-2">
+        <button
+          :if={@index > 0}
+          id={"quiz-prev-#{@w.id}"}
+          type="button"
+          phx-click={JS.push("widget:ui") |> JS.focus(to: "#quiz-step-#{@w.id}")}
+          phx-value-widget={@w.id}
+          phx-value-key="q"
+          phx-value-value={@index - 1}
+          value={@index - 1}
+          class="rounded-lg border border-base-300 px-2.5 py-1 text-xs font-medium hover:bg-base-200"
+        >Previous question</button>
+        <button
+          :if={@index < @total - 1}
+          id={"quiz-next-#{@w.id}"}
+          type="button"
+          phx-click={JS.push("widget:ui") |> JS.focus(to: "#quiz-step-#{@w.id}")}
+          phx-value-widget={@w.id}
+          phx-value-key="q"
+          phx-value-value={@index + 1}
+          value={@index + 1}
+          class="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-content hover:opacity-90"
+        >Next question</button>
+      </div>
     </div>
     """
   end
@@ -1113,11 +1259,11 @@ defmodule JarvisWeb.WidgetComponents do
             >
               <td class="px-3 py-2">
                 <span class="flex items-center gap-2 font-medium">
-                  <span class="grid size-5 place-items-center rounded-full bg-base-content font-mono text-[10px] text-base-100">{rank}</span>
+                  <span class="grid size-5 place-items-center rounded-full bg-base-content font-mono text-[0.625rem] text-base-100">{rank}</span>
                   {o["label"]}
                   <span
                     :if={@d["recommended"] == o["id"]}
-                    class="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold uppercase text-primary-content"
+                    class="rounded-full bg-primary px-1.5 py-0.5 text-[0.625rem] font-semibold uppercase text-primary-content"
                   >Recommended</span>
                   <.part_button w={@w} part={"option:#{o["id"]}"} ctx={@ctx} />
                 </span>
@@ -1132,7 +1278,10 @@ defmodule JarvisWeb.WidgetComponents do
                     ]}
                   />
                 </span>
-                <span :if={o["notes"][c["id"]]} class="mt-0.5 block text-[11px] text-base-content/70">{o[
+                <span
+                  :if={o["notes"][c["id"]]}
+                  class="mt-0.5 block text-[0.6875rem] text-base-content/70"
+                >{o[
                   "notes"
                 ][c["id"]]}</span>
               </td>
@@ -1181,7 +1330,7 @@ defmodule JarvisWeb.WidgetComponents do
     ~H"""
     <div class="grid gap-4 md:grid-cols-2">
       <div>
-        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">
+        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-base-content/70">
           Claims
         </h3>
         <ul class="space-y-1.5">
@@ -1208,18 +1357,18 @@ defmodule JarvisWeb.WidgetComponents do
               {c["text"]}
               <span
                 :if={c["sources"] == []}
-                class="ml-1 rounded bg-warning/30 px-1.5 py-0.5 text-[10px] font-bold uppercase text-base-content"
+                class="ml-1 rounded bg-warning/30 px-1.5 py-0.5 text-[0.625rem] font-bold uppercase text-base-content"
               >Unsupported</span>
             </button>
             <.part_button w={@w} part={"claim:#{c["id"]}"} ctx={@ctx} />
           </li>
-          <li :if={(@d["claims"] || []) == []} class="text-sm italic text-base-content/60">
+          <li :if={(@d["claims"] || []) == []} class="text-sm italic text-base-content/70">
             No claims.
           </li>
         </ul>
       </div>
       <div>
-        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-base-content/60">
+        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-base-content/70">
           Sources
         </h3>
         <ul class="space-y-2">
@@ -1270,8 +1419,8 @@ defmodule JarvisWeb.WidgetComponents do
     ~H"""
     <div>
       <p :if={@d["title"]} class="mb-2 font-semibold">{@d["title"]}</p>
-      <div class="grid gap-3 lg:grid-cols-[12rem_minmax(0,1fr)]">
-        <ol class="space-y-1 text-sm">
+      <div class={["grid gap-3", length(@steps) > 1 && "lg:grid-cols-[12rem_minmax(0,1fr)]"]}>
+        <ol :if={length(@steps) > 1} class="space-y-1 text-sm">
           <li :for={{s, i} <- Enum.with_index(@steps)}>
             <button
               type="button"
@@ -1286,7 +1435,7 @@ defmodule JarvisWeb.WidgetComponents do
                 if(i == @index, do: "bg-primary text-primary-content", else: "hover:bg-base-200")
               ]}
             >
-              <span class="font-mono text-[10px] opacity-70">{i + 1}</span>
+              <span class="font-mono text-[0.625rem] opacity-70">{i + 1}</span>
               <span class="block truncate font-mono text-xs">{Path.basename(s["path"])}</span>
             </button>
           </li>
@@ -1295,9 +1444,16 @@ defmodule JarvisWeb.WidgetComponents do
           <div class="flex items-center gap-2 text-xs">
             <span class="font-mono font-semibold">{@step["path"]}<span
               :if={@step["lines"]}
-              class="text-base-content/60"
+              class="text-base-content/70"
             >:{@step["lines"]}</span></span>
-            <span class="ml-auto text-base-content/60">Step {@index + 1} of {length(@steps)}</span>
+            <span
+              :if={length(@steps) > 1}
+              class="ml-auto font-semibold"
+              id={"walk-counter-#{@w.id}"}
+              tabindex="-1"
+            >
+              Step {@index + 1} of {length(@steps)}
+            </span>
             <.part_button w={@w} part={"step:#{@step["id"]}"} ctx={@ctx} />
           </div>
           <div class="grid gap-3 xl:grid-cols-2">
@@ -1306,28 +1462,30 @@ defmodule JarvisWeb.WidgetComponents do
               class="text-sm [&_pre]:max-h-80"
             />
             <div class="rounded-xl bg-primary/10 p-3 ring-1 ring-primary/30">
-              <.markdown text={@step["narration"]} class="text-sm" />
+              <.markdown glossary={@ctx.glossary} text={@step["narration"]} class="text-sm" />
             </div>
           </div>
-          <div class="flex gap-2">
+          <div :if={length(@steps) > 1} class="flex gap-2">
             <button
+              :if={@index > 0}
+              id={"walk-prev-#{@w.id}"}
               type="button"
-              phx-click="widget:ui"
+              phx-click={JS.push("widget:ui") |> JS.focus(to: "#walk-counter-#{@w.id}")}
               phx-value-widget={@w.id}
               phx-value-key="step"
               phx-value-value={@index - 1}
               value={@index - 1}
-              disabled={@index == 0}
               class="rounded-lg border border-base-300 px-2.5 py-1 text-xs font-medium hover:bg-base-200 disabled:opacity-40"
             >Previous</button>
             <button
+              :if={@index < length(@steps) - 1}
+              id={"walk-next-#{@w.id}"}
               type="button"
-              phx-click="widget:ui"
+              phx-click={JS.push("widget:ui") |> JS.focus(to: "#walk-counter-#{@w.id}")}
               phx-value-widget={@w.id}
               phx-value-key="step"
               phx-value-value={@index + 1}
               value={@index + 1}
-              disabled={@index == length(@steps) - 1}
               class="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-content hover:opacity-90 disabled:opacity-40"
             >Next</button>
           </div>
@@ -1391,20 +1549,22 @@ defmodule JarvisWeb.WidgetComponents do
         >
           <div class="flex flex-wrap items-center gap-2">
             <span class={[
-              "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
+              "rounded-full px-2 py-0.5 text-[0.625rem] font-bold uppercase",
               @severity_style[f["severity"]]
             ]}>{f["severity"]}</span>
             <span class="font-mono text-xs">{f["path"]}<span :if={f["line"]}>:{f["line"]}</span></span>
             <span class="ml-auto" />
             <.part_button w={@w} part={"finding:#{f["id"]}"} ctx={@ctx} />
           </div>
-          <.markdown text={f["explanation"]} class="mt-2 text-sm" />
+          <.markdown glossary={@ctx.glossary} text={f["explanation"]} class="mt-2 text-sm" />
           <div
             :if={f["suggestion"]}
             class="mt-2 rounded-lg border-l-4 border-success bg-success/10 px-3 py-2 text-sm"
           >
-            <p class="text-[10px] font-bold uppercase tracking-wide text-success">Suggested change</p>
-            <.markdown text={f["suggestion"]} class="text-sm" />
+            <p class="text-[0.625rem] font-bold uppercase tracking-wide text-success">
+              Suggested change
+            </p>
+            <.markdown glossary={@ctx.glossary} text={f["suggestion"]} class="text-sm" />
           </div>
           <div class="mt-3 flex gap-1.5" role="group" aria-label={"Your answer to #{f["id"]}"}>
             <button
@@ -1451,7 +1611,7 @@ defmodule JarvisWeb.WidgetComponents do
       <p
         :if={@w.data["status"] == "read" and @items == []}
         id={"discussion-#{@w.id}-none"}
-        class="italic text-base-content/60"
+        class="italic text-base-content/70"
       >
         No existing discussion.
       </p>
@@ -1489,7 +1649,7 @@ defmodule JarvisWeb.WidgetComponents do
     <div id={"round-#{@w.id}"} class="space-y-3 text-sm">
       <p class="font-semibold">
         Round {@d["number"]}
-        <span class="ml-1 font-mono text-xs font-normal text-base-content/60">
+        <span class="ml-1 font-mono text-xs font-normal text-base-content/70">
           {@d["previous_head"]} → {@d["head"]}
         </span>
       </p>
@@ -1521,7 +1681,7 @@ defmodule JarvisWeb.WidgetComponents do
           <div class="flex flex-wrap items-center gap-2">
             <span class="font-mono text-xs">finding {s["finding"]}</span>
             <span class={[
-              "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase",
+              "rounded-full px-2 py-0.5 text-[0.625rem] font-bold uppercase",
               case s["status"] do
                 "resolved" -> "bg-success text-success-content"
                 "open" -> "bg-warning text-warning-content"
@@ -1530,19 +1690,19 @@ defmodule JarvisWeb.WidgetComponents do
             ]}>
               {if s["status"] == "location_gone", do: "location gone", else: s["status"]}
             </span>
-            <span class="font-mono text-xs text-base-content/60">
+            <span class="font-mono text-xs text-base-content/70">
               {if s["status"] == "location_gone", do: "was " <> s["old_location"], else: s["location"]}
             </span>
             <span class="ml-auto" />
             <.part_button w={@w} part={"status:#{s["id"]}"} ctx={@ctx} />
           </div>
-          <.markdown text={s["reason"]} class="mt-2 text-sm" />
+          <.markdown glossary={@ctx.glossary} text={s["reason"]} class="mt-2 text-sm" />
           <div
             class="mt-3 flex items-center gap-1.5"
             role="group"
             aria-label={"Your status for #{s["finding"]}"}
           >
-            <span class="mr-1 text-xs text-base-content/60">
+            <span class="mr-1 text-xs text-base-content/70">
               {if @mine[s["id"]], do: "Your status:", else: "Not confirmed:"}
             </span>
             <button
@@ -1610,21 +1770,21 @@ defmodule JarvisWeb.WidgetComponents do
             <span class="font-mono text-xs">{c["path"]}:{c["line"]}</span>
             <span
               :if={c["posted_url"]}
-              class="rounded-full bg-success px-2 py-0.5 text-[10px] font-bold uppercase text-success-content"
+              class="rounded-full bg-success px-2 py-0.5 text-[0.625rem] font-bold uppercase text-success-content"
             >posted</span>
             <span
               :if={!c["posted_url"] and @stale?}
-              class="rounded-full bg-warning px-2 py-0.5 text-[10px] font-bold uppercase text-warning-content"
+              class="rounded-full bg-warning px-2 py-0.5 text-[0.625rem] font-bold uppercase text-warning-content"
             >possibly out of date</span>
             <span
               :if={!anchored?}
               id={"draft-#{@w.id}-#{c["id"]}-flag"}
-              class="rounded-full bg-error px-2 py-0.5 text-[10px] font-bold uppercase text-error-content"
+              class="rounded-full bg-error px-2 py-0.5 text-[0.625rem] font-bold uppercase text-error-content"
             >line not in the diff</span>
             <span class="ml-auto" />
             <.part_button w={@w} part={"anchor:#{c["id"]}"} ctx={@ctx} />
           </div>
-          <pre class="mt-2 overflow-x-auto rounded-lg bg-base-100 py-1 font-mono text-[11px] leading-relaxed"><span
+          <pre class="mt-2 overflow-x-auto rounded-lg bg-base-100 py-1 font-mono text-[0.6875rem] leading-relaxed"><span
               :for={l <- Catalog.hunk_lines(c["hunk"])}
               class={[
                 "block whitespace-pre px-2",
@@ -1635,7 +1795,7 @@ defmodule JarvisWeb.WidgetComponents do
               data-marked={to_string(marked?(l, c))}
             >{l.text}</span></pre>
           <div class="group/part mt-2 flex items-start gap-2 rounded-lg border border-base-300 bg-base-100 p-2">
-            <.markdown text={c["body"]} class="flex-1 text-sm" />
+            <.markdown glossary={@ctx.glossary} text={c["body"]} class="flex-1 text-sm" />
             <.part_button w={@w} part={"comment:#{c["id"]}"} ctx={@ctx} />
           </div>
           <div
@@ -1681,7 +1841,7 @@ defmodule JarvisWeb.WidgetComponents do
         </li>
       </ul>
       <div class="group/part flex flex-wrap items-center gap-2 border-t border-base-200 pt-3">
-        <span class="text-xs font-semibold uppercase tracking-wide text-base-content/60">Verdict</span>
+        <span class="text-xs font-semibold uppercase tracking-wide text-base-content/70">Verdict</span>
         <button
           :for={v <- Catalog.verdicts()}
           type="button"
@@ -1734,7 +1894,7 @@ defmodule JarvisWeb.WidgetComponents do
   defp discussion_group(assigns) do
     ~H"""
     <div id={@id}>
-      <h3 class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-base-content/60">
+      <h3 class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-base-content/70">
         {@title}
       </h3>
       <ul class="space-y-2">
@@ -1745,23 +1905,23 @@ defmodule JarvisWeb.WidgetComponents do
         >
           <div class="flex flex-wrap items-center gap-2">
             <span class="font-medium">{i["author"]}</span>
-            <span class="text-xs text-base-content/60">{String.replace(i["type"], "_", " ")}</span>
+            <span class="text-xs text-base-content/70">{String.replace(i["type"], "_", " ")}</span>
             <span
               :if={i["state"]}
-              class="rounded-full bg-base-300 px-2 py-0.5 text-[10px] font-bold uppercase"
+              class="rounded-full bg-base-300 px-2 py-0.5 text-[0.625rem] font-bold uppercase"
             >
               {String.replace(i["state"], "_", " ")}
             </span>
             <span :if={i["path"]} class="font-mono text-xs">{i["path"]}<span :if={i["line"]}>:{i[
               "line"
             ]}</span></span>
-            <span :if={i["type"] == "thread"} class="text-xs text-base-content/60">
+            <span :if={i["type"] == "thread"} class="text-xs text-base-content/70">
               {if i["resolved"] == true, do: "resolved", else: "unresolved"}
             </span>
             <span class="ml-auto" />
             <.part_button w={@w} part={"item:#{i["id"]}"} ctx={@ctx} />
           </div>
-          <.markdown :if={i["body"]} text={i["body"]} class="mt-1 text-sm" />
+          <.markdown :if={i["body"]} glossary={@ctx.glossary} text={i["body"]} class="mt-1 text-sm" />
         </li>
       </ul>
     </div>
@@ -1781,21 +1941,33 @@ defmodule JarvisWeb.WidgetComponents do
   attr :simulate_agent?, :boolean, default: false
   attr :event, :string, default: "move"
 
-  @doc "The lifecycle of a task type as a graph, and the moves out of the current step."
+  attr :confirming, :string,
+    default: nil,
+    doc:
+      "the transition the human chose and must confirm; its card shows from, to, and what happens next"
+
+  @doc """
+  The lifecycle of a task type as a graph, and the moves out of the current step.
+
+  Choosing a move sends `move_ask`; the card then shows the from-step, the
+  to-step, and what happens next, and only its confirm button sends `@event`.
+  `move_cancel` closes the confirmation.
+  """
   def lifecycle(assigns) do
     assigns = assign(assigns, :next, for(%{t: t} <- assigns.transitions, do: t.to))
 
     ~H"""
-    <div id="lifecycle" class="space-y-4">
+    <div id="lifecycle" tabindex="-1" class="space-y-4">
       <.lifecycle_graph type={@type} step={@step} previous={@previous} next={@next} />
 
       <div class="grid gap-2 md:grid-cols-2">
-        <p :if={@transitions == []} class="text-sm italic text-base-content/60">
+        <p :if={@transitions == []} class="text-sm italic text-base-content/70">
           This step ends the lifecycle.
         </p>
         <div
           :for={%{t: t, unmet: unmet} <- @transitions}
-          id={"transition-#{String.replace(t.name, " ", "-")}"}
+          id={"transition-#{dashed(t.name)}"}
+          tabindex="-1"
           class="rounded-xl border border-base-300 p-3"
         >
           <div class="flex items-center gap-2">
@@ -1804,7 +1976,7 @@ defmodule JarvisWeb.WidgetComponents do
               class="size-4 text-base-content/70"
             />
             <p class="font-medium">{t.name}</p>
-            <span class="ml-auto text-xs text-base-content/60">→ {TaskType.step_label(@type, t.to)}</span>
+            <span class="ml-auto text-xs text-base-content/70">→ {TaskType.step_label(@type, t.to)}</span>
           </div>
           <p class="mt-1 text-xs text-base-content/70">
             <%= if t.mover == :human do %>
@@ -1816,12 +1988,45 @@ defmodule JarvisWeb.WidgetComponents do
           <p :for={reason <- unmet} class="mt-1 flex items-center gap-1 text-xs text-warning-content">
             <span class="rounded bg-warning/30 px-1.5 py-0.5 text-base-content">{reason}</span>
           </p>
+          <div
+            :if={@confirming == t.name}
+            id={"move-confirmation-#{dashed(t.name)}"}
+            role="group"
+            aria-label={"Confirm #{t.name}"}
+            class="mt-2 rounded-lg border-2 border-base-content/70 p-3 text-sm"
+          >
+            <p>
+              From <strong>{TaskType.step_label(@type, @step)}</strong>
+              to <strong>{TaskType.step_label(@type, t.to)}</strong>.
+            </p>
+            <p class="mt-1">Next: {TaskType.step_description(@type, t.to)}.</p>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button
+                id={"move-confirm-#{dashed(t.name)}"}
+                type="button"
+                phx-click={JS.push(@event) |> JS.focus(to: "#lifecycle")}
+                phx-value-transition={t.name}
+                phx-mounted={JS.focus()}
+                class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-content hover:opacity-90"
+              >
+                Move to {TaskType.step_label(@type, t.to)}
+              </button>
+              <button
+                id={"move-cancel-#{dashed(t.name)}"}
+                type="button"
+                phx-click={JS.push("move_cancel") |> JS.focus(to: "#transition-#{dashed(t.name)}")}
+                class="rounded-lg border border-base-300 px-3 py-1.5 text-sm font-medium hover:bg-base-200"
+              >
+                Keep it in {TaskType.step_label(@type, @step)}
+              </button>
+            </div>
+          </div>
           <button
-            :if={t.mover == :human or @simulate_agent?}
+            :if={(t.mover == :human or @simulate_agent?) and @confirming != t.name}
+            id={"move-ask-#{dashed(t.name)}"}
             type="button"
-            phx-click={@event}
+            phx-click="move_ask"
             phx-value-transition={t.name}
-            phx-value-as={if t.mover == :human, do: "human", else: "agent"}
             disabled={unmet != []}
             class={[
               "mt-2 rounded-lg px-3 py-1.5 text-sm font-medium transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40",
@@ -1923,7 +2128,7 @@ defmodule JarvisWeb.WidgetComponents do
               y={arc.ly}
               text-anchor="middle"
               class={[
-                "text-[10px]",
+                "text-[0.625rem]",
                 cond do
                   arc.t.from == @step -> "fill-primary font-semibold"
                   is_nil(@step) -> "fill-base-content opacity-80"
@@ -1948,13 +2153,13 @@ defmodule JarvisWeb.WidgetComponents do
               "next" -> "border-2 border-primary bg-primary/5"
               "passed" -> "bg-base-200 text-base-content/70"
               "plain" -> "border border-base-300 bg-base-100"
-              _ -> "border border-base-300 bg-base-100 text-base-content/60"
+              _ -> "border border-base-300 bg-base-100 text-base-content/70"
             end
           ]}
           style={node_style(@layout.steps[key])}
         >
           <span>{label}</span>
-          <span class="text-[10px] font-normal uppercase tracking-wide opacity-80">
+          <span class="text-[0.625rem] font-normal uppercase tracking-wide">
             {case state do
               "current" -> "you are here"
               "previous" -> "came from"
@@ -1967,6 +2172,39 @@ defmodule JarvisWeb.WidgetComponents do
     </div>
     """
   end
+
+  defp dashed(name), do: String.replace(name, " ", "-")
+
+  # Part ids are written by agents; encoding keeps the DOM id a valid selector.
+  defp comment_button_id(widget_id, nil), do: "comment-on-#{widget_id}"
+
+  defp comment_button_id(widget_id, part),
+    do: "comment-on-#{widget_id}-" <> Base.url_encode64(part, padding: false)
+
+  # Where the explanation of a selected part sits: right under its node or
+  # group, or at its edge's label, so it is read together with the part.
+  defp detail_position("node:" <> id, layout) do
+    case layout.nodes[id] do
+      %{x: x, y: y, h: h} -> {x, y + h + 8}
+      _ -> nil
+    end
+  end
+
+  defp detail_position("group:" <> id, layout) do
+    case Enum.find(layout.groups, &(&1.id == id)) do
+      %{x: x, y: y} -> {x + 8, y + 28}
+      _ -> nil
+    end
+  end
+
+  defp detail_position("edge:" <> id, layout) do
+    case Enum.find(layout.edges, &(&1.id == id)) do
+      %{lx: lx, ly: ly} -> {lx - 128, ly + 8}
+      _ -> nil
+    end
+  end
+
+  defp detail_position(_part, _layout), do: nil
 
   defp step_state(key, step, previous, next, order) do
     cond do
@@ -2005,6 +2243,49 @@ defmodule JarvisWeb.WidgetComponents do
     "#{ticks}#{language}\n#{code}\n#{ticks}"
   end
 
+  @doc """
+  The `{pattern, meaning}` pairs of a goal's glossary widgets, longest term
+  first. A pattern matches the term as a whole word, and its inflected forms in
+  the board `language` (`"sv"` or `"en"`, see `Jarvis.Language`).
+  """
+  def glossary(goal_widgets, language) do
+    for(%{kind: "glossary_term", data: d} <- goal_widgets, do: {d["term"], d["meaning"]})
+    |> Enum.sort_by(fn {term, _} -> -String.length(term) end)
+    |> Enum.map(fn {term, meaning} -> {term_pattern(term, language), meaning} end)
+  end
+
+  # Swedish endings on the last word: definite (-en, -et, -n, -t), plural
+  # (-ar, -er, -or, -r, -n), definite plural (-arna, -erna, -orna, -rna, -na),
+  # each optionally genitive (-s). A term ending in -a or -e drops it before
+  # -ar, -er, -or, or -na (tavla, tavlor; pojke, pojkar; flyttare, flyttarna).
+  # Stem changes (nyckel, nycklar) are not matched.
+  @sv_endings "(?:arna|erna|orna|rna|na|ar|er|or|en|et|r|n|t)?s?"
+  @en_endings "(?:'s|’s|es|s)?"
+
+  defp term_pattern(term, language) do
+    term = String.trim(term)
+    escaped = Regex.escape(term)
+
+    forms =
+      case language do
+        "sv" ->
+          dropped =
+            if String.match?(term, ~r/\p{L}{2}[ae]$/iu),
+              do: [Regex.escape(String.slice(term, 0..-2//1)) <> "(?:(?:ar|er|or)(?:na)?|na)s?"],
+              else: []
+
+          [escaped <> @sv_endings | dropped]
+
+        _ ->
+          [escaped <> @en_endings]
+      end
+
+    Regex.compile!(
+      "(?<![\\p{L}\\p{N}])(?:" <> Enum.join(forms, "|") <> ")(?![\\p{L}\\p{N}])",
+      "iu"
+    )
+  end
+
   @doc "Time-stamps comments and builds the context every widget needs."
   def context(opts) do
     Map.merge(
@@ -2014,6 +2295,8 @@ defmodule JarvisWeb.WidgetComponents do
         composer: nil,
         listening: false,
         sandbox: false,
+        changed: MapSet.new(),
+        glossary: [],
         now: DateTime.utc_now()
       },
       Map.new(opts)

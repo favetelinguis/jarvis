@@ -26,7 +26,7 @@ defmodule JarvisWeb.GuideLiveTest do
 
         assert has_element?(
                  view,
-                 ~s(header #nav-guide[href="/guide"] + a[href="/design-system"] + a[href="/settings"])
+                 ~s{#main-nav li:has(#nav-guide[href="/guide"]) + li:has(a[href="/design-system"]) + li:has(a[href="/settings"])}
                ),
                "no Guide link before Design system and Settings on #{path}"
       end

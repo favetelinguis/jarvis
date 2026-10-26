@@ -220,6 +220,14 @@ defmodule Jarvis.Planning.TaskType do
     end
   end
 
+  @doc "What happens in a step, in one line (the third element of its definition)."
+  def step_description(type, step) do
+    case List.keyfind(steps(type), step, 0) do
+      {_, _, description} -> description
+      nil -> step
+    end
+  end
+
   def step?(type, step), do: List.keymember?(steps(type), step, 0)
 
   def transitions(type), do: fetch!(type).transitions

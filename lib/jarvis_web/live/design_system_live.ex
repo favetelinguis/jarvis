@@ -14,7 +14,7 @@ defmodule JarvisWeb.DesignSystemLive do
 
   @guides [
     {"requirement",
-     "A requirement as trigger → system → response, colored by its EARS pattern, so structure is visible at a glance (signaling).",
+     "A requirement as trigger → system → response. Its EARS pattern sets its color, so you see the structure at a glance.",
      "Confirm one. Then press Question and send a comment: the simulated agent revises the card, and your confirmation is cleared because the text changed."},
     {"examples",
      "Concrete examples of a rule that you explore instead of read (explorable explanation).",
@@ -63,6 +63,7 @@ defmodule JarvisWeb.DesignSystemLive do
      |> assign(:sandbox?, true)
      |> assign(:ui, %{})
      |> assign(:composer, nil)
+     |> assign(:confirming, nil)
      |> assign(:comments, [])
      |> assign(:type, :feature)
      |> assign(:step, "requirements")
@@ -156,13 +157,23 @@ defmodule JarvisWeb.DesignSystemLive do
 
   def handle_event("type", %{"type" => type}, socket) do
     type = TaskType.parse(type)
-    {:noreply, assign(socket, type: type, step: TaskType.first_step(type), previous: nil)}
+
+    {:noreply,
+     assign(socket, type: type, step: TaskType.first_step(type), previous: nil, confirming: nil)}
   end
 
   def handle_event("restart", _params, socket),
     do: {:noreply, assign(socket, step: TaskType.first_step(socket.assigns.type), previous: nil)}
 
+  def handle_event("move_ask", %{"transition" => name}, socket),
+    do: {:noreply, assign(socket, :confirming, name)}
+
+  def handle_event("move_cancel", _params, socket),
+    do: {:noreply, assign(socket, :confirming, nil)}
+
   def handle_event("move", %{"transition" => name}, socket) do
+    socket = assign(socket, :confirming, nil)
+
     %{type: type, step: step, widgets: widgets} = socket.assigns
     transition = TaskType.find_transition(type, step, name)
 
@@ -309,20 +320,19 @@ defmodule JarvisWeb.DesignSystemLive do
 
     ~H"""
     <Layouts.app
+      form={:reference}
       flash={@flash}
       theme_css={@theme_css}
       crumbs={[{"Design system", ~p"/design-system"}]}
     >
       <header class="max-w-3xl">
         <h1 class="text-2xl font-semibold tracking-tight">Design system</h1>
-        <p class="mt-2 text-base-content/70">
-          Everything agents can show you, ready to play with. Nothing here touches a board:
-          answers, weights, and comments live in this page, and a <em>simulated agent</em>
-          answers your comments.
-          Open “What the agent sees and writes” under any widget to see the data behind it.
+        <p class="mt-2 max-w-[70ch]">
+          Every widget kind agents can show you, with the same fields for each. Nothing here touches a board.
+          A simulated agent answers your comments.
+          <.link navigate={~p"/guide"} class="underline">The Guide explains how comments reach agents.</.link>
         </p>
         <nav id="design-nav" class="mt-4 flex flex-wrap gap-1.5 text-sm" aria-label="On this page">
-          <a href="#how" class="rounded-full bg-base-200 px-3 py-1 hover:bg-primary/10">How it works</a>
           <a href="#theme" class="rounded-full bg-base-200 px-3 py-1 hover:bg-primary/10">Theme</a>
           <a href="#lifecycle-demo" class="rounded-full bg-base-200 px-3 py-1 hover:bg-primary/10">Lifecycle</a>
           <a
@@ -334,31 +344,6 @@ defmodule JarvisWeb.DesignSystemLive do
           </a>
         </nav>
       </header>
-
-      <section id="how" class="mt-10">
-        <h2 class="text-lg font-semibold">How you and the agent collaborate</h2>
-        <ol class="mt-3 grid gap-3 md:grid-cols-4">
-          <li
-            :for={
-              {n, title, text} <- [
-                {1, "The agent writes widgets",
-                 "Through jarvis_widgets, from the catalog. Jarvis checks every field and draws it."},
-                {2, "You point at a part",
-                 "Hover any widget or part and press the comment icon; the comment records exactly what you pointed at."},
-                {3, "The agent hears you next turn",
-                 "At the start of its next turn, the session working on the task receives your comment with the part's content."},
-                {4, "It changes or answers",
-                 "The widget updates live, or the agent replies in the thread right at that part."}
-              ]
-            }
-            class="rounded-2xl border border-base-300 bg-base-100 p-4"
-          >
-            <span class="grid size-7 place-items-center rounded-full bg-primary font-mono text-sm text-primary-content">{n}</span>
-            <p class="mt-2 font-semibold">{title}</p>
-            <p class="mt-1 text-sm text-base-content/70">{text}</p>
-          </li>
-        </ol>
-      </section>
 
       <section id="theme" class="mt-10">
         <div class="flex items-end justify-between gap-3">
@@ -388,7 +373,8 @@ defmodule JarvisWeb.DesignSystemLive do
         <p class="mt-1 max-w-3xl text-sm text-base-content/70">
           Each task type has its own lifecycle. The graph shows where a task is, where it came from, and where it can go.
           Here you play both roles: your own decisions are buttons, and agent moves have an “Act as the agent” button.
-          Some moves are blocked until something is true — confirm every requirement card below to unlock <em>approve requirements</em>, or pass the gate quiz to unlock the Learn move <em>passed</em>.
+          Some moves wait for a condition. Confirm every requirement card below to unlock <em>approve requirements</em>.
+          Pass the gate quiz to unlock the Learn move <em>passed</em>.
         </p>
         <div class="mt-3 flex flex-wrap gap-1">
           <button
@@ -420,6 +406,7 @@ defmodule JarvisWeb.DesignSystemLive do
             step={@step}
             previous={@previous}
             transitions={@transitions}
+            confirming={@confirming}
             simulate_agent?={true}
           />
         </div>
@@ -430,14 +417,18 @@ defmodule JarvisWeb.DesignSystemLive do
         id={"kind-#{kind}"}
         class="mt-12 scroll-mt-20"
       >
-        <h2 class="text-lg font-semibold">
-          {Catalog.label(kind)}
-          <code class="ml-1 rounded bg-base-200 px-1.5 py-0.5 text-xs font-normal">{kind}</code>
-        </h2>
-        <p class="mt-1 max-w-3xl text-sm text-base-content/70">{blurb}</p>
-        <p class="mt-1 max-w-3xl text-sm">
-          <span class="font-semibold text-primary">Try this:</span> {try_this}
-        </p>
+        <h2 class="text-lg font-semibold">{Catalog.label(kind)}</h2>
+        <dl
+          id={"kind-#{kind}-fields"}
+          class="mt-2 grid max-w-3xl grid-cols-[7rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm"
+        >
+          <dt class="font-semibold">Kind</dt>
+          <dd><code>{kind}</code></dd>
+          <dt class="font-semibold">Purpose</dt>
+          <dd>{blurb}</dd>
+          <dt class="font-semibold">Try this</dt>
+          <dd>{try_this}</dd>
+        </dl>
         <div class="mt-3 space-y-4">
           <.widget :for={w <- @by_kind[kind] || []} w={w} ctx={@ctx} />
         </div>

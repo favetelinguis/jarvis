@@ -23,6 +23,8 @@ defmodule JarvisWeb.Router do
       live "/projects/:project", ProjectLive
       live "/projects/:project/goals/:goal", GoalLive
       live "/projects/:project/goals/:goal/tasks/:task", TaskLive
+      live "/docs", DocsLive, :index
+      live "/docs/tutorial", DocsLive, :tutorial
       live "/guide", GuideLive
       live "/design-system", DesignSystemLive
       live "/settings", SettingsLive

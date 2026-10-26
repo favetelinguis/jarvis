@@ -77,8 +77,11 @@ defmodule JarvisWeb.CoreComponents do
           <p>{msg}</p>
         </div>
         <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label="close">
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <button
+          type="button"
+          class="group inline-flex min-h-6 items-center gap-1 self-start cursor-pointer text-sm underline"
+        >
+          Close
         </button>
       </div>
     </div>
@@ -322,7 +325,7 @@ defmodule JarvisWeb.CoreComponents do
     ~H"""
     <header class={[@actions != [] && "flex items-center justify-between gap-6", "pb-4"]}>
       <div>
-        <h1 class="text-lg font-semibold leading-8">
+        <h1 class="text-lg font-semibold">
           {render_slot(@inner_block)}
         </h1>
         <p :if={@subtitle != []} class="text-sm text-base-content/70">

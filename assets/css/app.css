@@ -39,14 +39,14 @@
   --color-accent-content: oklch(96% 0.016 293.756);
   --color-neutral: oklch(37% 0.044 257.287);
   --color-neutral-content: oklch(98% 0.003 247.858);
-  --color-info: oklch(58% 0.158 241.966);
-  --color-info-content: oklch(97% 0.013 236.62);
-  --color-success: oklch(60% 0.118 184.704);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
+  --color-info: oklch(76% 0.12 240);
+  --color-info-content: oklch(20% 0.04 240);
+  --color-success: oklch(78% 0.14 175);
+  --color-success-content: oklch(20% 0.03 175);
+  --color-warning: oklch(82% 0.15 75);
+  --color-warning-content: oklch(20% 0.04 75);
+  --color-error: oklch(75% 0.16 20);
+  --color-error-content: oklch(20% 0.04 20);
   --radius-selector: 0.25rem;
   --radius-field: 0.25rem;
   --radius-box: 0.5rem;
@@ -74,14 +74,14 @@
   --color-accent-content: oklch(100% 0 0);
   --color-neutral: oklch(44% 0.017 285.786);
   --color-neutral-content: oklch(98% 0 0);
-  --color-info: oklch(62% 0.214 259.815);
+  --color-info: oklch(50% 0.18 259);
   --color-info-content: oklch(97% 0.014 254.604);
-  --color-success: oklch(70% 0.14 182.503);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
+  --color-success: oklch(48% 0.11 175);
+  --color-success-content: oklch(99% 0.01 175);
+  --color-warning: oklch(82% 0.16 75);
+  --color-warning-content: oklch(20% 0.04 75);
+  --color-error: oklch(50% 0.2 25);
+  --color-error-content: oklch(99% 0.01 25);
   --radius-selector: 0.25rem;
   --radius-field: 0.25rem;
   --radius-box: 0.5rem;
@@ -91,6 +91,30 @@
   --depth: 1;
   --noise: 0;
 }
+
+/* Type scale (D8 in .agents/skills/jarvis-design): every text step takes its
+   line height from one of three tokens, so the line spacing setting changes
+   the tokens, not the elements. */
+:root {
+  --leading-heading: 1.3;
+  --leading-body: 1.5;
+  --leading-small: 1.4;
+}
+html[data-leading="increased"] {
+  --leading-heading: 1.5;
+  --leading-body: 1.9;
+  --leading-small: 1.8;
+}
+@theme inline {
+  --text-xs--line-height: var(--leading-small);
+  --text-sm--line-height: var(--leading-small);
+  --text-base--line-height: var(--leading-body);
+  --text-lg--line-height: var(--leading-heading);
+  --text-xl--line-height: var(--leading-heading);
+  --text-2xl--line-height: var(--leading-heading);
+  --leading-relaxed: var(--leading-body);
+}
+html { line-height: var(--leading-body); }
 
 /* Add variants based on LiveView classes */
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
@@ -106,9 +130,9 @@
 /* This file is for your main application CSS */
 
 /* Rendered markdown written by agents (see JarvisWeb.PlanningComponents.markdown/1). */
-.md { line-height: 1.6; overflow-wrap: anywhere; }
+.md { line-height: var(--leading-body); overflow-wrap: anywhere; }
 .md > * + * { margin-top: 0.75em; }
-.md h1, .md h2, .md h3, .md h4 { font-weight: 600; line-height: 1.3; margin-top: 1.2em; }
+.md h1, .md h2, .md h3, .md h4 { font-weight: 600; line-height: var(--leading-heading); margin-top: 1.2em; }
 .md h1 { font-size: 1.25em; }
 .md h2 { font-size: 1.125em; }
 .md h3, .md h4 { font-size: 1em; }
@@ -128,3 +152,82 @@
 .md th, .md td { border: 1px solid color-mix(in oklab, currentColor 15%, transparent); padding: 0.35em 0.6em; text-align: left; vertical-align: top; }
 .md th { font-weight: 600; background: color-mix(in oklab, currentColor 5%, transparent); }
 .md hr { border: 0; border-top: 1px solid color-mix(in oklab, currentColor 15%, transparent); }
+
+/* Grundnivå (WCAG 2.2 AA floor) for every page; see .agents/skills/jarvis-design. */
+
+/* A visible focus indicator on everything that can take focus. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--color-base-content);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/* Targets at least 24×24 CSS pixels; inline text links are exempt. */
+:where(button, select, summary, [role="button"], input[type="checkbox"], input[type="radio"], input[type="color"]) {
+  min-height: 24px;
+  min-width: 24px;
+}
+
+/* No horizontal page scroll at 320 CSS pixels: long words wrap; diagrams and code scroll in their own frame. */
+body { overflow-wrap: anywhere; }
+pre, code, svg { overflow-wrap: normal; }
+/* Grid and flex items may shrink below their content, so wide content scrolls in its own frame instead of the page. */
+main :where(.grid, .flex, .inline-flex) > * { min-width: 0; }
+main pre, main table, main select { max-width: 100%; }
+main :not(pre) > code { overflow-wrap: anywhere; }
+
+/* Reduced motion is respected. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* A glossary term in widget text, and its meaning shown in place. */
+.md .term { text-decoration: underline dotted; text-underline-offset: 3px; font: inherit; cursor: help; min-height: 0; min-width: 0; }
+.md .term[aria-expanded="true"] { font-weight: 600; }
+.md .term-def:not([hidden]) { display: block; margin: 0.25em 0; padding: 0.4em 0.7em; border-left: 3px solid currentColor; background: color-mix(in oklab, currentColor 6%, transparent); }
+
+/* Reader-controlled display settings (assets/js/display.js sets these on <html>). */
+html[data-text-size="125"] { font-size: 125%; }
+html[data-text-size="150"] { font-size: 150%; }
+html[data-text-size="200"] { font-size: 200%; }
+
+html[data-density="compact"] { --spacing: 0.19rem; }
+
+html[data-motion="reduced"] *, html[data-motion="reduced"] *::before, html[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* High contrast: black on white, every color at 7:1 or more. Specific enough to
+   win over the brand theme, which sets :root and a dark-mode media rule. */
+html:root[data-theme="contrast"] {
+  color-scheme: light;
+  --color-base-100: #ffffff;
+  --color-base-200: #f2f2f2;
+  --color-base-300: #000000;
+  --color-base-content: #000000;
+  --color-primary: #00248f;
+  --color-primary-content: #ffffff;
+  --color-secondary: #3b0066;
+  --color-secondary-content: #ffffff;
+  --color-accent: #6b2a00;
+  --color-accent-content: #ffffff;
+  --color-neutral: #000000;
+  --color-neutral-content: #ffffff;
+  --color-info: #003d73;
+  --color-info-content: #ffffff;
+  --color-success: #00522c;
+  --color-success-content: #ffffff;
+  --color-warning: #ffd23f;
+  --color-warning-content: #000000;
+  --color-error: #8f0000;
+  --color-error-content: #ffffff;
+}
+html[data-theme="contrast"] :where(.border, [class*="border-"]) { border-color: #000000; }

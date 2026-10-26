@@ -55,7 +55,11 @@ defmodule JarvisWeb.GoalLive do
         {:ok,
          socket
          |> assign(:goal, goal)
-         |> assign(:widgets, widgets)
+         |> assign(
+           :glossary,
+           JarvisWeb.WidgetComponents.glossary(widgets, Jarvis.Language.current())
+         )
+         |> JarvisWeb.WidgetEvents.assign_widgets(widgets)
          |> assign(:anchored, anchored)
          |> assign(:plain, plain)
          |> assign(:listener, Planning.listening_session(socket.assigns.scope.project, goal, nil))
@@ -87,12 +91,15 @@ defmodule JarvisWeb.GoalLive do
             comments: live,
             composer: assigns.composer,
             listening: Jarvis.Workspaces.AgentSession.listening(assigns.listener),
+            changed: assigns.changed,
+            glossary: assigns.glossary,
             now: assigns.now
           )
       )
 
     ~H"""
     <Layouts.app
+      form={:reference}
       flash={@flash}
       theme_css={@theme_css}
       crumbs={[
@@ -101,7 +108,7 @@ defmodule JarvisWeb.GoalLive do
       ]}
     >
       <header class="mb-8">
-        <p class="font-mono text-xs text-base-content/60">Goal {@goal.number}</p>
+        <p class="font-mono text-xs text-base-content/70">Goal {@goal.number}</p>
         <h1 class="mt-1 text-2xl font-semibold tracking-tight">{@goal.title}</h1>
         <div :if={@goal.poc} id="goal-poc" class="mt-3 flex items-center gap-3">
           <.poc_badge />
@@ -112,14 +119,20 @@ defmodule JarvisWeb.GoalLive do
 
       <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <article class="space-y-8">
-          <.sections sections={TaskType.sections(:goal)} widgets={@widgets} ctx={@ctx} prefix="goal" />
+          <.sections
+            sections={TaskType.sections(:goal)}
+            widgets={@widgets}
+            ctx={@ctx}
+            prefix="goal"
+            type={:goal}
+          />
           <.removed_anchors comments={@removed} />
         </article>
 
         <aside class="space-y-4">
           <.panel title="Tasks" id="goal-tasks">
             <ul class="space-y-1">
-              <li :if={@goal.tasks == []} class="text-sm text-base-content/60">No tasks yet.</li>
+              <li :if={@goal.tasks == []} class="text-sm text-base-content/70">No tasks yet.</li>
               <li :for={task <- @goal.tasks} id={"task-#{task.id}"}>
                 <.link
                   navigate={
@@ -127,7 +140,7 @@ defmodule JarvisWeb.GoalLive do
                   }
                   class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-base-200"
                 >
-                  <span class="font-mono text-xs text-base-content/60">{task.number}</span>
+                  <span class="font-mono text-xs text-base-content/70">{task.number}</span>
                   <span class="min-w-0 flex-1 truncate">{task.title}</span>
                   <.type_badge type={task.type} />
                   <.step_badge step={task.step} label={TaskType.step_label(task.type, task.step)} />

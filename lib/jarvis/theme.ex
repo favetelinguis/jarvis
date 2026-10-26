@@ -26,7 +26,9 @@ defmodule Jarvis.Theme do
   # Body text (base-content) of the same themes.
   @texts %{light: {0.21, 0.006, 285.885}, dark: {0.97807, 0.029, 256.847}}
 
-  @min_contrast 4.5
+  # The floor is 4.5:1, but brand colors are also used as text on their own
+  # 10-20% tints, which costs about a point of contrast; aim higher on the plain background.
+  @text_contrast 5.8
 
   def names, do: @names
   def defaults, do: @defaults
@@ -148,7 +150,7 @@ defmodule Jarvis.Theme do
     Enum.reduce_while(0..40, rgb, fn step, _ ->
       color = mix(rgb, target, step / 40)
 
-      if contrast(color, background) >= @min_contrast,
+      if contrast(color, background) >= @text_contrast,
         do: {:halt, color},
         else: {:cont, color}
     end)

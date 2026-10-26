@@ -21,6 +21,9 @@ defmodule JarvisWeb.WidgetEvents do
 
   def handle("widget:cancel", _params, socket), do: {:noreply, assign(socket, :composer, nil)}
 
+  def handle("widget:seen", %{"widget" => id}, socket),
+    do: {:noreply, assign(socket, :changed, MapSet.delete(socket.assigns.changed, to_int(id)))}
+
   def handle(
         "widget:comment",
         %{"body" => body},
@@ -71,6 +74,29 @@ defmodule JarvisWeb.WidgetEvents do
 
   def handle("widget:rendered", %{"widget" => id}, socket),
     do: act(socket, to_int(id), "rendered", %{})
+
+  @doc """
+  Assigns `widgets` and adds to `:changed` every widget an agent added or
+  rewrote since the page last loaded. The human's own actions only touch
+  `human`, so they never mark a widget. Marks stay until the human reads them
+  (`widget:seen`).
+  """
+  def assign_widgets(socket, widgets) do
+    changed = Map.get(socket.assigns, :changed, MapSet.new())
+
+    changed =
+      case Map.get(socket.assigns, :widgets) do
+        nil ->
+          changed
+
+        previous ->
+          before = Map.new(previous, &{&1.id, {&1.kind, &1.data}})
+
+          for w <- widgets, Map.get(before, w.id) != {w.kind, w.data}, into: changed, do: w.id
+      end
+
+    socket |> assign(:widgets, widgets) |> assign(:changed, changed)
+  end
 
   defp effective(widget, current, criterion) do
     default =

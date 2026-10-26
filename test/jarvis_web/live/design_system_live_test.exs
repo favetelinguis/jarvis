@@ -55,7 +55,12 @@ defmodule JarvisWeb.DesignSystemLiveTest do
     for id <- [-1, -2, -3], do: view |> element("#confirm-#{id}") |> render_click()
     refute has_element?(view, "#transition-approve-requirements button[disabled]")
 
-    view |> element("#transition-approve-requirements button") |> render_click()
+    view |> element("#move-ask-approve-requirements") |> render_click()
+    view |> element("#move-cancel-approve-requirements") |> render_click()
+    assert has_element?(view, "#step-requirements[data-state=current]")
+
+    view |> element("#move-ask-approve-requirements") |> render_click()
+    view |> element("#move-confirm-approve-requirements") |> render_click()
     assert has_element?(view, "#step-design[data-state=current]")
     assert has_element?(view, "#step-requirements[data-state=previous]")
 
@@ -63,14 +68,18 @@ defmodule JarvisWeb.DesignSystemLiveTest do
     |> element("#transition-requirements-question button", "Act as the agent")
     |> render_click()
 
+    view |> element("#move-confirm-requirements-question") |> render_click()
+
     assert has_element?(view, "#step-requirements[data-state=current]")
   end
 
   test "the Learn lifecycle is gated by the gate quiz", %{conn: conn} do
     {:ok, view, _} = live(conn, ~p"/design-system")
     view |> element("#demo-type-learn") |> render_click()
-    view |> element("#transition-explain button") |> render_click()
-    view |> element("#transition-check-understanding button") |> render_click()
+    view |> element("#move-ask-explain") |> render_click()
+    view |> element("#move-confirm-explain") |> render_click()
+    view |> element("#move-ask-check-understanding") |> render_click()
+    view |> element("#move-confirm-check-understanding") |> render_click()
     assert has_element?(view, "#transition-passed button[disabled]")
 
     gate =

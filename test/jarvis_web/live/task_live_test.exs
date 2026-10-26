@@ -58,7 +58,13 @@ defmodule JarvisWeb.TaskLiveTest do
       view |> element("#confirm-#{hd(Planning.list_widgets(goal, task)).id}") |> render_click()
       refute has_element?(view, "#transition-approve-requirements button[disabled]")
 
-      view |> element("#transition-approve-requirements button") |> render_click()
+      view |> element("#move-ask-approve-requirements") |> render_click()
+      assert has_element?(view, "#move-confirmation-approve-requirements", "From Requirements")
+      assert has_element?(view, "#move-confirmation-approve-requirements", "to Design")
+      assert has_element?(view, "#move-confirmation-approve-requirements", "Next:")
+      assert {:ok, %{step: "requirements"}} = Planning.fetch_task(scope, 1, 1)
+
+      view |> element("#move-confirm-approve-requirements") |> render_click()
       assert has_element?(view, "#step-design[data-state=current]")
       assert {:ok, %{step: "design"}} = Planning.fetch_task(scope, 1, 1)
     end
@@ -90,9 +96,10 @@ defmodule JarvisWeb.TaskLiveTest do
     test "each type shows its own sections", %{conn: conn, scope: scope, goal: goal} do
       task!(scope, goal, %{"type" => "pr_review", "title" => "Review"})
       {:ok, view, _} = open(conn, scope, 2)
+      assert has_element?(view, "#toc-pull_request")
+      assert has_element?(view, "#toc-verdict")
+      refute has_element?(view, "#toc-requirements")
       assert has_element?(view, "#section-pull_request")
-      assert has_element?(view, "#section-verdict")
-      refute has_element?(view, "#section-requirements")
       assert has_element?(view, "#step-intake[data-state=current]")
     end
   end

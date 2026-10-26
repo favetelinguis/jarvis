@@ -99,6 +99,7 @@ defmodule JarvisWeb.ProjectLive do
   def render(assigns) do
     ~H"""
     <Layouts.app
+      form={:reference}
       flash={@flash}
       theme_css={@theme_css}
       crumbs={[{@scope.project.name, ~p"/projects/#{@scope.project}"}]}
@@ -106,7 +107,7 @@ defmodule JarvisWeb.ProjectLive do
       <div class="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div class="min-w-0">
           <h1 class="text-2xl font-semibold tracking-tight">{@scope.project.name}</h1>
-          <p class="truncate font-mono text-xs text-base-content/50">{@scope.project.key}</p>
+          <p class="truncate font-mono text-xs text-base-content/70">{@scope.project.key}</p>
         </div>
       </div>
 
@@ -158,7 +159,7 @@ defmodule JarvisWeb.ProjectLive do
           <div
             :if={@goal_count > 0 and @matching_goals_empty?}
             id="no-matching-tasks"
-            class="rounded-2xl border border-dashed border-base-300 p-10 text-center text-sm text-base-content/60"
+            class="rounded-2xl border border-dashed border-base-300 p-10 text-center text-sm text-base-content/70"
           >
             No matching tasks. Choose another filter to see more work.
           </div>
@@ -166,7 +167,7 @@ defmodule JarvisWeb.ProjectLive do
           <div
             :if={@goal_count == 0}
             id="no-goals"
-            class="rounded-2xl border border-dashed border-base-300 p-10 text-center text-sm text-base-content/60"
+            class="rounded-2xl border border-dashed border-base-300 p-10 text-center text-sm text-base-content/70"
           >
             No goals yet. Ask an agent to <code class="rounded bg-base-200 px-1">/specify</code> one.
           </div>
@@ -181,7 +182,7 @@ defmodule JarvisWeb.ProjectLive do
                 navigate={~p"/projects/#{@scope.project}/goals/#{goal.number}"}
                 class="group flex items-center gap-3 rounded-t-2xl px-5 py-4 transition hover:bg-base-200/50"
               >
-                <span class="font-mono text-xs text-base-content/40">G{goal.number}</span>
+                <span class="font-mono text-xs text-base-content/70">G{goal.number}</span>
                 <h2 class="min-w-0 flex-1 truncate font-semibold group-hover:underline">
                   {goal.title}
                 </h2>
@@ -196,21 +197,21 @@ defmodule JarvisWeb.ProjectLive do
                     }
                     class="flex flex-wrap items-center gap-x-3 gap-y-1 px-5 py-2.5 transition hover:bg-base-200/50"
                   >
-                    <span class="w-10 font-mono text-xs text-base-content/40">
+                    <span class="w-10 font-mono text-xs text-base-content/70">
                       {goal.number}.{task.number}
                     </span>
                     <.type_badge type={task.type} />
                     <.step_badge step={task.step} label={TaskType.step_label(task.type, task.step)} />
                     <span class={[
                       "min-w-0 flex-1 truncate text-sm",
-                      task.step == "done" && "text-base-content/50"
+                      task.step == "done" && "text-base-content/70"
                     ]}>
                       {task.title}
                     </span>
                     <.worktree_chip worktree={task.worktree} />
                     <span
                       :for={session <- Map.get(@focus, task.id, [])}
-                      class="inline-flex items-center gap-1 text-xs text-base-content/60"
+                      class="inline-flex items-center gap-1 text-xs text-base-content/70"
                       title={"#{session_name(session)} is #{presence_label(AgentSession.presence(session, @now))}"}
                     >
                       <.presence_dot presence={AgentSession.presence(session, @now)} />
@@ -229,13 +230,13 @@ defmodule JarvisWeb.ProjectLive do
 
           <.panel title="Activity" id="activity-panel">
             <ol id="events" phx-update="stream" class="space-y-2.5">
-              <li id="events-empty" class="hidden text-sm text-base-content/50 only:block">
+              <li id="events-empty" class="hidden text-sm text-base-content/70 only:block">
                 Nothing has happened yet.
               </li>
               <li :for={{dom_id, event} <- @streams.events} id={dom_id} class="flex gap-2 text-sm">
                 <.icon
                   name={if event.actor == :human, do: "hero-user-mini", else: "hero-cpu-chip-mini"}
-                  class="mt-0.5 size-4 shrink-0 text-base-content/40"
+                  class="mt-0.5 size-4 shrink-0 text-base-content/70"
                 />
                 <div class="min-w-0">
                   <p class="break-words">
@@ -244,7 +245,7 @@ defmodule JarvisWeb.ProjectLive do
                     </span>
                     {event.summary}
                   </p>
-                  <p class="text-xs text-base-content/40">
+                  <p class="text-xs text-base-content/70">
                     <.time_ago at={event.inserted_at} now={@now} />
                   </p>
                 </div>
@@ -304,7 +305,7 @@ defmodule JarvisWeb.ProjectLive do
       <div class="flex h-1.5 w-24 overflow-hidden rounded-full bg-base-200">
         <div class="bg-success" style={"width: #{@done * 100 / @total}%"} />
       </div>
-      <span class="font-mono text-xs text-base-content/60">{@done}/{length(@tasks)}</span>
+      <span class="font-mono text-xs text-base-content/70">{@done}/{length(@tasks)}</span>
     </div>
     """
   end

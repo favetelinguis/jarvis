@@ -103,16 +103,17 @@ All three harnesses use the same six MCP tool definitions. Tool calls carry the 
 | `/` | Projects with task counts and live sessions |
 | `/projects/:id` | Goals and matching tasks with All, Unfinished, per-type, and per-step filters; type, step, claim, and focus dots. Live sessions, activity feed |
 | `.../goals/:n` | The goal's sections as widgets, its tasks, notes on the goal |
-| `.../goals/:n/tasks/:m` | The lifecycle graph and the moves out of the current step, every section as widgets you can comment on, who is listening, release claim, conversation with the agents |
+| `.../goals/:n/tasks/:m` | Where you are and what can happen next, the lifecycle graph and the moves out of the current step (each confirmed before it happens), a contents list of the sections with one section shown at a time as widgets you can comment on, who is listening, release claim, conversation with the agents |
+| `/docs` | The four kinds of documentation (tutorial, how-to, reference, explanation), each with its page; `/docs/tutorial` walks a first comment loop |
 | `/guide` | How the workflows are used: concepts, claims and sessions, each task type's lifecycle with its transitions and an example flow, other workflows |
 | `/design-system` | Every widget kind with example data, the lifecycle graphs, and the theme, all playable in memory with a simulated agent |
-| `/settings` | Integrations (install Jarvis into pi, Codex, Copilot CLI) and the brand colors (primary, secondary, accent): live preview, contrast table, save, reset |
+| `/settings` | Display settings kept in your browser (text size, line spacing, color theme including high contrast, motion, density), board language, the brand colors (primary, secondary, accent): live preview, contrast table, save, reset, and integrations (install Jarvis into pi, Codex, Copilot CLI) |
 
 The project-board filter starts at **All** on each visit. **Unfinished** hides tasks in Done; choosing a type offers that type's steps. Goals without matching tasks are hidden, but each visible goal’s progress still includes all its tasks. Filter selection stays in place during live updates; reload or return to the board to reset it.
 
 ### Theme
 
-Three brand colors drive the whole UI; each is darkened for light mode and lightened for dark mode until its text reaches a 4.5:1 contrast. Set them on `/settings` to match the company you work for. Mermaid diagrams take the same colors.
+Three brand colors drive the whole UI; each is darkened for light mode and lightened for dark mode until its text reaches a 4.5:1 contrast (aiming higher, so it also reads on its own tints). The high contrast theme ignores them. Set them on `/settings` to match the company you work for. Mermaid diagrams take the same colors.
 
 Every page updates live through PubSub when an agent or another browser tab changes something.
 
