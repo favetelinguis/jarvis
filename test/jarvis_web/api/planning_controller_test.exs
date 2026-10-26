@@ -51,7 +51,11 @@ defmodule JarvisWeb.Api.PlanningControllerTest do
       |> patch(~p"/api/goals/1/tasks/1", %{transition: "approve question"})
       |> json_response(422)
 
-    assert %{"details" => %{"transition" => ["This transition is the human's decision"]}} = moved
+    assert %{"details" => %{"transition" => [message]}} = moved
+    assert message =~ ~s("approve question" is the human's decision)
+    assert message =~ "http"
+
+    conn |> patch(~p"/api/goals/1", %{poc: true}) |> json_response(200)
 
     jumped =
       conn

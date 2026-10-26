@@ -43,17 +43,27 @@ defmodule Jarvis.Fixtures do
     task
   end
 
-  @doc "Adds one widget to a section of a goal (task `nil`) or task; returns it."
+  @doc """
+  Adds one widget to a section of a goal (task `nil`) or task; returns it.
+  Written as setup, outside any step's section ownership and turn report.
+  """
   def widget!(scope, goal, task, section, kind, data \\ nil) do
     data = data || Jarvis.Planning.Catalog.example(kind)
 
     {:ok, [id]} =
-      Planning.apply_widget_ops(scope, goal, task, [
+      Planning.apply_widget_ops(Scope.for_human(scope.project), goal, task, [
         %{"op" => "add", "section" => section, "kind" => kind, "data" => data}
       ])
 
     {:ok, widget} = Planning.fetch_widget(scope, id)
     widget
+  end
+
+  @doc "Puts the task in a step directly, as setup; returns the task."
+  def at_step!(task, step, previous \\ nil) do
+    task
+    |> Ecto.Changeset.change(step: step, previous_step: previous, turn: nil)
+    |> Jarvis.Repo.update!()
   end
 
   @doc "A requirement card's data."

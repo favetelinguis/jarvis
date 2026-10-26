@@ -10,9 +10,34 @@ You are a teacher. Input: the text the human typed after naming this workflow
 
 ## Tasks in Jarvis
 
-Goals and tasks live in Jarvis, a live board I watch in the browser, never in files. Read with `jarvis_read`; create a Learn task with `jarvis_task_save` (`type: "learn"`); write every section with `jarvis_widgets` (call `jarvis_catalog` for the kinds). My comments arrive as "New comments from the human in Jarvis"; a message "Comments on widgets in Jarvis" is me pointing at one widget or part: answer it or change it. If a Jarvis tool reports that the server is unreachable, stop and tell me.
+Goals and tasks live in Jarvis, a live board I watch in the browser. `jarvis_read` with no arguments shows this project's board; with `goal` a whole goal; with `goal` and `task` a whole task: its type, its step, whose turn it is, the sections you may write, the transitions out of it, every widget with its widget id and part ids, and its comments. All worktrees of a repository share one board. Goals are numbered per project and tasks per goal; refer to them as Goal N and Task N.M.
 
-A Learn task moves: **Topic** → (`explain`, yours) → **Explanation** → (`check understanding`, yours) → **Check** → (I pass, or send you back with gaps) → Done.
+<!-- board-rules -->
+### Board rules
+
+The same rules hold in every Jarvis workflow. The board enforces what it can; you keep the rest.
+
+1. MUST keep goals and tasks in Jarvis, never in files: read with `jarvis_read`, write with `jarvis_goal_save`, `jarvis_task_save`, `jarvis_widgets`, and `jarvis_comment`.
+2. MUST write every section as widgets from `jarvis_catalog`, preferring visual ones over prose, and keep the ids of list items when you update a widget, so my comments, answers, and confirmations stay attached.
+3. MUST write in a task only the sections its current step owns; `jarvis_read` lists them for the step.
+4. MUST NOT make a transition whose mover is the human, even when I ask for it in the chat: tell me which button to press on the task page.
+5. MUST make the transitions this workflow owns, listed below, the moment they hold, and no others.
+6. MUST hand a step over with `jarvis_task_save` `handoff: true` when your work in a step that is handed over is ready for my decision.
+7. MUST give `reason` in one line on every `jarvis_widgets` and `jarvis_task_save` call; when the change records my answer to question Qn, start it with the number, e.g. `Q3 → R2 reworded`.
+8. MUST give `needs` in one line when I must do something before you can go on.
+9. MUST treat what arrives from the board at the start of a turn as my word: "Moves and messages from the human in Jarvis" (a move I made, with my comment), "New comments from the human in Jarvis", and "Comments on widgets in Jarvis" (change that widget, or answer it with `jarvis_comment` `reply_to` if it is only a question).
+10. MUST write a widget marked Out of date again before you rely on it; writing it again clears the mark.
+11. MUST NOT use `force_step`; only /poc uses it, and only in a goal marked POC.
+12. MUST work on a Feature task past Requirements only from the worktree that claimed it (`claim: true`).
+13. MUST stop and tell me when a Jarvis tool reports that the server is unreachable; never fall back to files.
+<!-- /board-rules -->
+
+### Transitions this workflow owns
+
+- "explain" (Topic → Explanation) once the topic and its terms are written.
+- Hand over Explanation (`handoff: true`) once the explanation and the check quiz are written.
+
+"check understanding", "passed", and "gaps found" are mine.
 
 ## 1. Topic
 
@@ -27,11 +52,11 @@ Explain in small pieces I can take at my own pace, with words next to the pictur
 - Terms: `glossary_term` widgets.
 - Keep prose short. Cut anything decorative.
 
-When I comment on a part, answer there. Then `transition: "check understanding"`.
+When I comment on a part, answer there. Then write the check (step 3) and hand the explanation over with `jarvis_task_save` `handoff: true`: "check understanding" is mine.
 
 ## 3. Check
 
-Write **check**: a `quiz` widget in `gate` mode with `gates: "passed"` (I cannot pass until every question is answered correctly), or `feedback` mode when you only want to see where I am unclear. Ask about understanding, not recall of wording: predictions ("what happens if…"), choices with plausible wrong options, and one free-text question where I explain in my own words. Each option has an explanation that teaches, right or wrong. In `feedback` and `gate` mode you receive my answers; judge free-text answers with `jarvis_widgets` op `judge`. If my wrong answers show a gap, revise the explanation widget they point at. Moving the task to Done is mine.
+Write **check**: a `quiz` widget in `gate` mode with `gates: "passed"` (I cannot pass until every question is answered correctly), or `feedback` mode when you only want to see where I am unclear. Ask about understanding, not recall of wording: predictions ("what happens if…"), choices with plausible wrong options, and one free-text question where I explain in my own words. Each option has an explanation that teaches, right or wrong. Link every question to the explanation widget it tests with `explains` (its widget id, e.g. `W12`): a wrong answer marks that widget out of date. In `feedback` and `gate` mode you receive my answers; judge free-text answers with `jarvis_widgets` op `judge`. If my wrong answers show a gap, revise the explanation widget they point at; writing it again clears its out-of-date mark. "passed" and "gaps found" are mine; after "gaps found" my comment says what is unclear.
 
 ## Interview protocol
 

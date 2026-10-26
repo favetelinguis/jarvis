@@ -142,10 +142,25 @@ defmodule Jarvis.Workspaces do
     )
   end
 
-  @doc "Records what the agent session is doing now: `:idle`, `:working`, or `:ended`."
+  @doc """
+  Records what the agent session is doing now: `:idle`, `:working`, or `:ended`.
+  Starting to work begins a new agent turn; any change of state ends the
+  previous turn, so its turn reports are shown.
+  """
   def set_state(%Scope{agent_session: %AgentSession{} = session} = scope, state)
       when state in [:idle, :working, :ended] do
-    session = session |> change(state: state) |> Repo.update!()
+    current = Repo.get!(AgentSession, session.id)
+    new_turn? = state == :working and current.state != :working
+
+    if state != :working or new_turn? do
+      from(r in Jarvis.Planning.Report,
+        where: r.agent_session_id == ^session.id and is_nil(r.closed_at)
+      )
+      |> Repo.update_all(set: [closed_at: DateTime.utc_now()])
+    end
+
+    turn = if new_turn?, do: current.turn + 1, else: current.turn
+    session = current |> change(state: state, turn: turn) |> Repo.update!()
     broadcast_change(scope.project.id)
     %{scope | agent_session: session}
   end

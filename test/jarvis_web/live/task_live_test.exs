@@ -27,7 +27,7 @@ defmodule JarvisWeb.TaskLiveTest do
     end
 
     test "marks where the task came from after a move", %{conn: conn, scope: scope, task: task} do
-      {:ok, _} = Planning.update_task(scope, task, %{"force_step" => "design"})
+      {:ok, _} = {:ok, at_step!(task, "design", task.step)}
       {:ok, view, _} = open(conn, scope)
       assert has_element?(view, "#step-design[data-state=current]")
       assert has_element?(view, "#step-requirements[data-state=previous]")
@@ -40,11 +40,13 @@ defmodule JarvisWeb.TaskLiveTest do
       scope: scope,
       task: task
     } do
-      {:ok, _} = Planning.update_task(scope, task, %{"force_step" => "design"})
+      {:ok, _} = {:ok, at_step!(task, "design", task.step)}
       {:ok, view, _} = open(conn, scope)
-      assert has_element?(view, "#transition-approve-design", "/design-review")
+      assert has_element?(view, "#transition-approve-design", "Your decision")
+      assert has_element?(view, "#transition-approve-design button", "approve design")
+      assert has_element?(view, "#transition-request-design-changes", "Needs a comment")
       assert has_element?(view, "#transition-requirements-question", "/design")
-      refute has_element?(view, "#transition-approve-design button")
+      refute has_element?(view, "#transition-requirements-question button")
     end
 
     test "the human's move is a button that is disabled with the reason until the condition holds",
@@ -88,7 +90,7 @@ defmodule JarvisWeb.TaskLiveTest do
     end
 
     test "Done ends the lifecycle", %{conn: conn, scope: scope, task: task} do
-      {:ok, _} = Planning.update_task(scope, task, %{"force_step" => "done"})
+      {:ok, _} = {:ok, at_step!(task, "done", task.step)}
       {:ok, view, _} = open(conn, scope)
       assert has_element?(view, "#lifecycle", "This step ends the lifecycle")
     end
@@ -363,7 +365,7 @@ defmodule JarvisWeb.TaskLiveTest do
       goal: goal
     } do
       learn = task!(scope, goal, %{"type" => "learn", "title" => "Learn"})
-      {:ok, learn} = Planning.update_task(scope, learn, %{"force_step" => "check"})
+      {:ok, learn} = {:ok, at_step!(learn, "check", learn.step)}
 
       quiz =
         widget!(scope, goal, learn, "check", "quiz", %{

@@ -58,7 +58,14 @@ defmodule JarvisWeb.Api.PlanningController do
 
     with {:ok, goal} <- Planning.fetch_goal(scope, int(goal_number)),
          {:ok, task} <- fetch_optional_task(scope, goal, params["task"]),
-         {:ok, _ids} <- Planning.apply_widget_ops(scope, goal, task, ops) do
+         {:ok, _ids} <-
+           Planning.apply_widget_ops(
+             scope,
+             goal,
+             task,
+             ops,
+             Map.take(params, ["reason", "needs"])
+           ) do
       if task,
         do: show_task(conn, %{"goal" => goal_number, "task" => task.number}),
         else: show_goal(conn, %{"goal" => goal_number})

@@ -206,6 +206,18 @@ defmodule JarvisWeb.GraphLayout do
         span = abs(index[t.to] - index[t.from])
 
         cond do
+          # A move that stays in its step loops above the step, drawn as a way back.
+          t.to == t.from ->
+            {x1, x2, y} = {a.x + a.w * 0.3, a.x + a.w * 0.7, a.y}
+
+            %{
+              t: t,
+              d: "M#{x1},#{y} C#{x1 - 10},#{y - 30} #{x2 + 10},#{y - 30} #{x2},#{y - 2}",
+              lx: (x1 + x2) / 2,
+              ly: y - 26,
+              dir: :back
+            }
+
           index[t.to] == index[t.from] + 1 ->
             {x1, y} = {a.x + a.w, a.y + a.h / 2}
             x2 = b.x

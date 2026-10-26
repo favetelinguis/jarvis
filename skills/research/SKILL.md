@@ -10,13 +10,38 @@ You are the researcher. Input: the text the human typed after naming this workfl
 
 ## Tasks in Jarvis
 
-Goals and tasks live in Jarvis, a live board I watch in the browser, never in files. Read with `jarvis_read`; create a Research task with `jarvis_task_save` (`type: "research"`); write every section with `jarvis_widgets` (call `jarvis_catalog` for the kinds). My comments arrive as "New comments from the human in Jarvis"; a message "Comments on widgets in Jarvis" is me pointing at one widget or part: change it, or answer in its thread with `jarvis_comment` `reply_to`. If a Jarvis tool reports that the server is unreachable, stop and tell me.
+Goals and tasks live in Jarvis, a live board I watch in the browser. `jarvis_read` with no arguments shows this project's board; with `goal` a whole goal; with `goal` and `task` a whole task: its type, its step, whose turn it is, the sections you may write, the transitions out of it, every widget with its widget id and part ids, and its comments. All worktrees of a repository share one board. Goals are numbered per project and tasks per goal; refer to them as Goal N and Task N.M.
 
-A Research task moves: **Question** → (I approve the question) → **Investigation** → (`findings ready`, yours) → **Findings** → (I accept, or ask you to dig deeper) → Done. Move it only with `jarvis_task_save` `transition`.
+<!-- board-rules -->
+### Board rules
+
+The same rules hold in every Jarvis workflow. The board enforces what it can; you keep the rest.
+
+1. MUST keep goals and tasks in Jarvis, never in files: read with `jarvis_read`, write with `jarvis_goal_save`, `jarvis_task_save`, `jarvis_widgets`, and `jarvis_comment`.
+2. MUST write every section as widgets from `jarvis_catalog`, preferring visual ones over prose, and keep the ids of list items when you update a widget, so my comments, answers, and confirmations stay attached.
+3. MUST write in a task only the sections its current step owns; `jarvis_read` lists them for the step.
+4. MUST NOT make a transition whose mover is the human, even when I ask for it in the chat: tell me which button to press on the task page.
+5. MUST make the transitions this workflow owns, listed below, the moment they hold, and no others.
+6. MUST hand a step over with `jarvis_task_save` `handoff: true` when your work in a step that is handed over is ready for my decision.
+7. MUST give `reason` in one line on every `jarvis_widgets` and `jarvis_task_save` call; when the change records my answer to question Qn, start it with the number, e.g. `Q3 → R2 reworded`.
+8. MUST give `needs` in one line when I must do something before you can go on.
+9. MUST treat what arrives from the board at the start of a turn as my word: "Moves and messages from the human in Jarvis" (a move I made, with my comment), "New comments from the human in Jarvis", and "Comments on widgets in Jarvis" (change that widget, or answer it with `jarvis_comment` `reply_to` if it is only a question).
+10. MUST write a widget marked Out of date again before you rely on it; writing it again clears the mark.
+11. MUST NOT use `force_step`; only /poc uses it, and only in a goal marked POC.
+12. MUST work on a Feature task past Requirements only from the worktree that claimed it (`claim: true`).
+13. MUST stop and tell me when a Jarvis tool reports that the server is unreachable; never fall back to files.
+<!-- /board-rules -->
+
+### Transitions this workflow owns
+
+- Hand over Question (`handoff: true`) once the question and its context are written.
+- "findings ready" (Investigation → Findings) once the findings, sources, and recommendation are written.
+
+"approve question", "accept", and "dig deeper" are mine.
 
 ## 1. Question
 
-If there is no task yet, create one in the goal I name (or ask which). Write the **question** section: a `prose` widget with the question in one sentence, and a `callout` for what the answer will be used for. Write the **context** section with a `glossary_term` per term and a `diagram` of anything I need to see to understand the question. Ask me what you need to know by the interview protocol below. Then stop: the transition "approve question" is mine.
+If there is no task yet, create one in the goal I name (or ask which). Write the **question** section: a `prose` widget with the question in one sentence, and a `callout` for what the answer will be used for. Write the **context** section with a `glossary_term` per term and a `diagram` of anything I need to see to understand the question. Ask me what you need to know by the interview protocol below. Then hand the question over with `jarvis_task_save` `handoff: true` and stop: "approve question" is mine.
 
 ## 2. Investigation
 
@@ -31,7 +56,7 @@ Show, do not tell:
 - What I must not miss: a `callout`.
 - **recommendation:** a `decision` with its reason and the alternatives rejected.
 
-Then move the task with `transition: "findings ready"` and tell me in two lines what you found and what I should look at first. When I comment on a part, answer or change exactly that widget.
+Then move the task with `transition: "findings ready"` and tell me in two lines what you found and what I should look at first. In Findings no section is yours: when I comment on a part, answer in its thread. When I choose "dig deeper", my comment says what to look into, and the recommendation is marked out of date until you write it again.
 
 ## Interview protocol
 

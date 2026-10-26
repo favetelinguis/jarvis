@@ -143,6 +143,23 @@ defmodule JarvisWeb.WidgetComponents do
         <span class="ml-auto" />
         <.part_button w={@w} ctx={@ctx} />
       </header>
+      <p
+        :if={@w.human["stale"]}
+        id={"stale-#{@w.id}"}
+        class="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-warning/30 px-3 py-1.5 text-sm"
+      >
+        <span class="rounded bg-base-content px-1.5 py-0.5 text-xs font-semibold text-base-100">
+          Out of date
+        </span>
+        <span>Changed upstream: {@w.human["stale"]["because"]}.</span>
+        <a
+          :if={@w.human["stale"]["source"]}
+          href={"?section=#{@w.human["stale"]["section"]}#widget-#{@w.human["stale"]["source"]}"}
+          class="underline"
+        >
+          See W{@w.human["stale"]["source"]}
+        </a>
+      </p>
       <div class="px-4 pb-4 pt-2">
         <.body w={@w} ctx={@ctx} />
       </div>
@@ -1553,6 +1570,14 @@ defmodule JarvisWeb.WidgetComponents do
               @severity_style[f["severity"]]
             ]}>{f["severity"]}</span>
             <span class="font-mono text-xs">{f["path"]}<span :if={f["line"]}>:{f["line"]}</span></span>
+            <span
+              :if={@w.section == "findings" and Map.has_key?(@ctx.matches, f["id"])}
+              id={"match-badge-#{@w.id}-#{f["id"]}"}
+              data-match={if @ctx.matches[f["id"]], do: "both", else: "agent"}
+              class="rounded-md border border-base-content/40 px-1.5 py-0.5 text-[0.6875rem] font-semibold"
+            >
+              {if @ctx.matches[f["id"]], do: "You saw this too", else: "Only the agent"}
+            </span>
             <span class="ml-auto" />
             <.part_button w={@w} part={"finding:#{f["id"]}"} ctx={@ctx} />
           </div>
@@ -1591,6 +1616,96 @@ defmodule JarvisWeb.WidgetComponents do
         </li>
       </ul>
     </div>
+    """
+  end
+
+  defp body(%{w: %{kind: "evidence"}} = assigns) do
+    assigns = assign(assigns, d: assigns.w.data)
+
+    ~H"""
+    <div class="space-y-3 text-sm">
+      <p class="flex flex-wrap items-center gap-2">
+        <span class="font-medium">Check</span>
+        <code class="rounded bg-base-200 px-1.5 py-0.5">{@d["command"]}</code>
+        <.result_badge result={@d["result"]} />
+      </p>
+      <pre
+        :if={@d["excerpt"]}
+        class="overflow-x-auto rounded-lg bg-base-200 p-3 font-mono text-xs"
+      >{@d["excerpt"]}</pre>
+      <table class="w-full text-left text-sm">
+        <thead class="text-xs uppercase tracking-wide text-base-content/70">
+          <tr>
+            <th class="py-1 pr-3 font-medium">Requirement</th>
+            <th class="py-1 pr-3 font-medium">Test</th>
+            <th class="py-1 font-medium">Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            :for={r <- @d["requirements"]}
+            id={"evidence-#{@w.id}-#{r["id"]}"}
+            class="group/part border-t border-base-200 align-top"
+          >
+            <td class="py-1.5 pr-3 font-mono text-xs">{r["requirement"]}</td>
+            <td class="py-1.5 pr-3 break-all font-mono text-xs">{r["test"]}</td>
+            <td class="py-1.5"><.result_badge result={r["result"]} /></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    """
+  end
+
+  defp body(%{w: %{kind: "view_matches"}} = assigns) do
+    assigns =
+      assign(assigns,
+        effective: Catalog.view_matches(assigns.w),
+        concerns: assigns.ctx.concerns
+      )
+
+    ~H"""
+    <ul class="space-y-2 text-sm">
+      <li
+        :for={m <- @w.data["matches"]}
+        id={"view-match-#{@w.id}-#{m["finding"]}"}
+        class="flex flex-wrap items-center gap-2"
+      >
+        <span class="font-mono text-xs">Finding {m["finding"]}</span>
+        <form
+          id={"match-form-#{@w.id}-#{m["finding"]}"}
+          phx-change="widget:action"
+          class="flex items-center gap-2"
+        >
+          <input type="hidden" name="widget" value={@w.id} />
+          <input type="hidden" name="action" value="match" />
+          <input type="hidden" name="finding" value={m["finding"]} />
+          <label for={"match-#{@w.id}-#{m["finding"]}"} class="text-xs text-base-content/70">
+            covers your concern
+          </label>
+          <select
+            id={"match-#{@w.id}-#{m["finding"]}"}
+            name="concern"
+            class="rounded-lg border border-base-300 bg-base-100 px-2 py-1 text-sm"
+          >
+            <option value="none" selected={@effective[m["finding"]] == nil}>none</option>
+            <option
+              :for={c <- @concerns}
+              value={c["id"]}
+              selected={@effective[m["finding"]] == c["id"]}
+            >
+              {c["id"]}: {c["text"]}
+            </option>
+          </select>
+        </form>
+        <span
+          :if={Map.has_key?(@w.human["matches"] || %{}, m["finding"])}
+          class="text-xs text-base-content/70"
+        >
+          (your match)
+        </span>
+      </li>
+    </ul>
     """
   end
 
@@ -1880,6 +1995,26 @@ defmodule JarvisWeb.WidgetComponents do
     """
   end
 
+  attr :result, :string, required: true
+
+  defp result_badge(assigns) do
+    ~H"""
+    <span class={[
+      "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold",
+      if(@result == "passed",
+        do: "bg-success/20 text-base-content",
+        else: "bg-error/20 text-base-content"
+      )
+    ]}>
+      <.icon
+        name={if @result == "passed", do: "hero-check-circle-mini", else: "hero-x-circle-mini"}
+        class="size-3.5"
+      />
+      {@result}
+    </span>
+    """
+  end
+
   defp marked?(l, c) do
     key = if c["side"] == "LEFT", do: :old, else: :new
     Map.get(l, key) == String.to_integer(c["line"])
@@ -1940,6 +2075,7 @@ defmodule JarvisWeb.WidgetComponents do
 
   attr :simulate_agent?, :boolean, default: false
   attr :event, :string, default: "move"
+  attr :move_error, :string, default: nil, doc: "why the chosen move was refused"
 
   attr :confirming, :string,
     default: nil,
@@ -1980,7 +2116,7 @@ defmodule JarvisWeb.WidgetComponents do
           </div>
           <p class="mt-1 text-xs text-base-content/70">
             <%= if t.mover == :human do %>
-              Your decision.
+              Your decision; no agent can make it.<span :if={t[:comment]}> Needs a comment.</span>
             <% else %>
               An agent moves it: run <code class="rounded bg-base-200 px-1">{t.command}</code>.
             <% end %>
@@ -1999,8 +2135,11 @@ defmodule JarvisWeb.WidgetComponents do
               From <strong>{TaskType.step_label(@type, @step)}</strong>
               to <strong>{TaskType.step_label(@type, t.to)}</strong>.
             </p>
+            <p :if={t.to == @step} class="mt-1">
+              The task stays in {TaskType.step_label(@type, @step)}.
+            </p>
             <p class="mt-1">Next: {TaskType.step_description(@type, t.to)}.</p>
-            <div class="mt-2 flex flex-wrap gap-2">
+            <div :if={!t[:comment]} class="mt-2 flex flex-wrap gap-2">
               <button
                 id={"move-confirm-#{dashed(t.name)}"}
                 type="button"
@@ -2020,6 +2159,67 @@ defmodule JarvisWeb.WidgetComponents do
                 Keep it in {TaskType.step_label(@type, @step)}
               </button>
             </div>
+            <form
+              :if={t[:comment]}
+              id={"move-form-#{dashed(t.name)}"}
+              phx-submit={JS.push(@event) |> JS.focus(to: "#lifecycle")}
+              class="mt-2 space-y-2"
+            >
+              <input type="hidden" name="transition" value={t.name} />
+              <div :if={t[:creates_task]}>
+                <label for={"move-title-#{dashed(t.name)}"} class="text-sm font-medium">
+                  Title of the new task (required)
+                </label>
+                <input
+                  id={"move-title-#{dashed(t.name)}"}
+                  name="new_title"
+                  type="text"
+                  required
+                  class="mt-1 w-full rounded-lg border border-base-300 bg-base-100 px-3 py-1.5 text-sm"
+                />
+              </div>
+              <div :if={t[:comment]}>
+                <label for={"move-comment-#{dashed(t.name)}"} class="text-sm font-medium">
+                  What should change? (required)
+                </label>
+                <textarea
+                  id={"move-comment-#{dashed(t.name)}"}
+                  name="comment"
+                  rows="3"
+                  aria-invalid={@move_error && "true"}
+                  aria-describedby={@move_error && "move-error-#{dashed(t.name)}"}
+                  phx-mounted={JS.focus()}
+                  class="mt-1 w-full rounded-lg border border-base-300 bg-base-100 px-3 py-2 text-sm"
+                ></textarea>
+              </div>
+              <p
+                :if={@move_error}
+                id={"move-error-#{dashed(t.name)}"}
+                role="alert"
+                class="text-sm text-error"
+              >
+                {@move_error}
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  id={"move-confirm-#{dashed(t.name)}"}
+                  type="submit"
+                  class="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-content hover:opacity-90"
+                >
+                  {if t.to == @step,
+                    do: "Send it back: #{t.name}",
+                    else: "Move to #{TaskType.step_label(@type, t.to)}"}
+                </button>
+                <button
+                  id={"move-cancel-#{dashed(t.name)}"}
+                  type="button"
+                  phx-click={JS.push("move_cancel") |> JS.focus(to: "#transition-#{dashed(t.name)}")}
+                  class="rounded-lg border border-base-300 px-3 py-1.5 text-sm font-medium hover:bg-base-200"
+                >
+                  Keep it in {TaskType.step_label(@type, @step)}
+                </button>
+              </div>
+            </form>
           </div>
           <button
             :if={(t.mover == :human or @simulate_agent?) and @confirming != t.name}
@@ -2296,6 +2496,8 @@ defmodule JarvisWeb.WidgetComponents do
         listening: false,
         sandbox: false,
         changed: MapSet.new(),
+        matches: %{},
+        concerns: [],
         glossary: [],
         now: DateTime.utc_now()
       },

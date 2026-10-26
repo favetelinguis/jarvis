@@ -37,6 +37,11 @@ defmodule JarvisWeb.GoalLive do
     {:noreply, socket}
   end
 
+  def handle_event("read_report", %{"report" => id}, socket) do
+    {:ok, _} = Planning.read_report(socket.assigns.scope, id)
+    {:noreply, socket}
+  end
+
   def handle_event("comment", %{"comment" => params}, socket) do
     %{scope: scope, goal: goal} = socket.assigns
 
@@ -51,10 +56,13 @@ defmodule JarvisWeb.GoalLive do
       {:ok, goal} ->
         widgets = Planning.list_widgets(goal, nil)
         {anchored, plain} = Enum.split_with(goal.comments, &Comment.anchored?/1)
+        {reports, history} = Planning.list_reports(goal, nil)
 
         {:ok,
          socket
          |> assign(:goal, goal)
+         |> assign(:reports, reports)
+         |> assign(:history, history)
          |> assign(
            :glossary,
            JarvisWeb.WidgetComponents.glossary(widgets, Jarvis.Language.current())
@@ -91,7 +99,7 @@ defmodule JarvisWeb.GoalLive do
             comments: live,
             composer: assigns.composer,
             listening: Jarvis.Workspaces.AgentSession.listening(assigns.listener),
-            changed: assigns.changed,
+            changed: JarvisWeb.WidgetEvents.changed(assigns, assigns.reports),
             glossary: assigns.glossary,
             now: assigns.now
           )
@@ -116,6 +124,16 @@ defmodule JarvisWeb.GoalLive do
           <button id="clear-poc" phx-click="clear_poc" class="btn btn-xs">Mark reviewed</button>
         </div>
       </header>
+
+      <div :if={@reports != [] or @history != []} class="mb-6">
+        <.turn_reports
+          reports={@reports}
+          history={@history}
+          type={:goal}
+          path={~p"/projects/#{@scope.project}/goals/#{@goal.number}"}
+          now={@now}
+        />
+      </div>
 
       <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <article class="space-y-8">
@@ -144,6 +162,7 @@ defmodule JarvisWeb.GoalLive do
                   <span class="min-w-0 flex-1 truncate">{task.title}</span>
                   <.type_badge type={task.type} />
                   <.step_badge step={task.step} label={TaskType.step_label(task.type, task.step)} />
+                  <.turn_badge turn={Planning.turn(task)} />
                 </.link>
               </li>
             </ul>

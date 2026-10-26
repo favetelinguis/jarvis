@@ -25,6 +25,8 @@ defmodule JarvisWeb.TaskLive do
     |> assign(:ui, %{})
     |> assign(:composer, nil)
     |> assign(:confirming, nil)
+    |> assign(:move_error, nil)
+    |> assign(:picture_error, nil)
     |> load()
   end
 
@@ -52,18 +54,71 @@ defmodule JarvisWeb.TaskLive do
   end
 
   def handle_event("move_ask", %{"transition" => name}, socket),
-    do: {:noreply, assign(socket, :confirming, name)}
+    do: {:noreply, assign(socket, confirming: name, move_error: nil)}
 
   def handle_event("move_cancel", _params, socket),
-    do: {:noreply, assign(socket, :confirming, nil)}
+    do: {:noreply, assign(socket, confirming: nil, move_error: nil)}
 
-  def handle_event("move", %{"transition" => name}, socket) do
-    socket = assign(socket, :confirming, nil)
+  def handle_event("move", %{"transition" => name} = params, socket) do
+    attrs = Map.take(params, ["comment", "new_title"])
 
-    case Planning.move_task(socket.assigns.scope, socket.assigns.task, name) do
-      {:ok, _} -> {:noreply, socket}
-      {:error, _} -> {:noreply, put_flash(socket, :error, "That move is not allowed right now.")}
+    case Planning.move_task(socket.assigns.scope, socket.assigns.task, name, attrs) do
+      {:ok, _} ->
+        {:noreply, assign(socket, confirming: nil, move_error: nil)}
+
+      {:error, %Ecto.Changeset{errors: errors}} ->
+        case Keyword.take(errors, [:comment, :new_title]) do
+          [{:comment, _} | _] ->
+            {:noreply,
+             assign(
+               socket,
+               :move_error,
+               "Write a comment that says what to change. The task stays where it is."
+             )}
+
+          [{:new_title, _} | _] ->
+            {:noreply, assign(socket, :move_error, "Give the new task a title.")}
+
+          [] ->
+            {:noreply,
+             socket
+             |> assign(confirming: nil, move_error: nil)
+             |> put_flash(:error, "That move is not allowed right now.")}
+        end
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "That move is not allowed right now.")}
     end
+  end
+
+  def handle_event("skip_quiz", _params, socket) do
+    case Planning.skip_quiz(socket.assigns.scope, socket.assigns.task) do
+      {:ok, _} ->
+        {:noreply, socket}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "The quiz can only be skipped in Quiz.")}
+    end
+  end
+
+  def handle_event("save_picture", %{"picture" => text}, socket) do
+    case Planning.save_picture(socket.assigns.scope, socket.assigns.task, text) do
+      {:ok, _} ->
+        {:noreply, assign(socket, :picture_error, nil)}
+
+      {:error, _} ->
+        {:noreply, assign(socket, :picture_error, "Write at least one concern, one per line.")}
+    end
+  end
+
+  def handle_event("skip_picture", _params, socket) do
+    {:ok, _} = Planning.save_picture(socket.assigns.scope, socket.assigns.task, nil)
+    {:noreply, socket}
+  end
+
+  def handle_event("read_report", %{"report" => id}, socket) do
+    {:ok, _} = Planning.read_report(socket.assigns.scope, id)
+    {:noreply, socket}
   end
 
   def handle_event("release", _params, socket) do
@@ -91,6 +146,9 @@ defmodule JarvisWeb.TaskLive do
           for t <- TaskType.transitions_from(task.type, task.step),
               do: %{t: t, unmet: Planning.unmet_conditions(task, t, widgets)}
 
+        {reports, history} = Planning.list_reports(task.goal, task)
+        view = Enum.find(widgets, &(&1.kind == "view_matches"))
+
         {:ok,
          socket
          |> assign(:task, task)
@@ -106,6 +164,10 @@ defmodule JarvisWeb.TaskLive do
          |> assign(:anchored, anchored)
          |> assign(:plain, plain)
          |> assign(:transitions, transitions)
+         |> assign(:turn, Planning.turn(task))
+         |> assign(:reports, reports)
+         |> assign(:history, history)
+         |> assign(:matches, if(view, do: Jarvis.Planning.Catalog.view_matches(view), else: %{}))
          |> assign(:listener, Planning.listening_session(scope.project, task.goal, task))
          |> assign(:focused, focused)
          |> assign(:now, now)
@@ -140,10 +202,14 @@ defmodule JarvisWeb.TaskLive do
     sections = TaskType.sections(assigns.task.type)
     current = current_section(sections, assigns.widgets, assigns[:section_param])
     {live, removed} = Enum.split_with(assigns.anchored, &(&1.widget_id in ids))
+    hide_findings? = Planning.picture_pending?(assigns.task)
 
     assigns =
       assign(assigns,
         removed: Enum.filter(removed, &(&1.widget_id == nil)),
+        hide_findings?: hide_findings?,
+        page_path:
+          ~p"/projects/#{assigns.scope.project}/goals/#{assigns.task.goal.number}/tasks/#{assigns.task.number}",
         sections: sections,
         current: current,
         ctx:
@@ -152,8 +218,10 @@ defmodule JarvisWeb.TaskLive do
             comments: live,
             composer: assigns.composer,
             listening: Jarvis.Workspaces.AgentSession.listening(assigns.listener),
-            changed: assigns.changed,
+            changed: JarvisWeb.WidgetEvents.changed(assigns, assigns.reports),
             glossary: assigns.glossary,
+            matches: assigns.matches,
+            concerns: (assigns.task.picture || %{})["concerns"] || [],
             now: assigns.now
           )
       )
@@ -211,6 +279,27 @@ defmodule JarvisWeb.TaskLive do
         </button>
       </header>
 
+      <.turn_panel
+        task={@task}
+        turn={@turn}
+        transitions={@transitions}
+        focused={@focused}
+        widgets={@widgets}
+        now={@now}
+        path={@page_path}
+      />
+
+      <div :if={@reports != [] or @history != []} class="mb-6">
+        <.turn_reports
+          reports={@reports}
+          history={@history}
+          type={@task.type}
+          path={@page_path}
+          now={@now}
+          hidden_sections={if @hide_findings?, do: ["findings"], else: []}
+        />
+      </div>
+
       <.panel title="Lifecycle" id="task-lifecycle">
         <:actions>
           <.link
@@ -227,6 +316,7 @@ defmodule JarvisWeb.TaskLive do
           previous={@task.previous_step}
           transitions={@transitions}
           confirming={@confirming}
+          move_error={@move_error}
         />
       </.panel>
 
@@ -239,9 +329,22 @@ defmodule JarvisWeb.TaskLive do
             current={@current}
             path={~p"/projects/#{@scope.project}/goals/#{@task.goal.number}/tasks/#{@task.number}"}
           />
+          <.picture_box
+            :if={
+              @task.type == :pr_review and @current in ~w(picture findings) and
+                (@task.picture || %{})["state"] != "not_asked"
+            }
+            task={@task}
+            matches={@matches}
+            error={@picture_error}
+          />
           <.sections
             sections={Enum.filter(@sections, &(elem(&1, 0) == @current))}
-            widgets={@widgets}
+            widgets={
+              if @hide_findings?,
+                do: Enum.reject(@widgets, &(&1.section == "findings")),
+                else: @widgets
+            }
             ctx={@ctx}
             type={@task.type}
           />
@@ -272,4 +375,239 @@ defmodule JarvisWeb.TaskLive do
     </Layouts.app>
     """
   end
+
+  attr :task, :map, required: true
+  attr :turn, :any, required: true
+  attr :transitions, :list, required: true
+  attr :focused, :list, required: true
+  attr :widgets, :list, required: true
+  attr :now, DateTime, required: true
+  attr :path, :string, required: true
+
+  # Whose turn it is, and exactly what is expected: your decisions with what
+  # each still lacks, or the command and worktree where the agent works.
+  defp turn_panel(assigns) do
+    decisions = Enum.filter(assigns.transitions, &(&1.t.mover == :human))
+    working = Enum.filter(assigns.focused, &(AgentSession.presence(&1, assigns.now) == :working))
+
+    assigns =
+      assign(assigns,
+        decisions: decisions,
+        working: working,
+        review: Enum.filter(assigns.widgets, &(&1.section == "review" and &1.kind == "findings")),
+        evidence: assigns.widgets |> Enum.filter(&(&1.kind == "evidence")) |> List.last()
+      )
+
+    ~H"""
+    <section
+      id="turn"
+      data-turn={turn_key(@turn)}
+      aria-labelledby="turn-heading"
+      class={[
+        "mb-6 rounded-2xl p-4",
+        if(@turn == :human,
+          do: "border-2 border-base-content bg-base-100",
+          else: "border border-base-300 bg-base-100"
+        )
+      ]}
+    >
+      <h2 id="turn-heading" class="flex flex-wrap items-center gap-2 text-lg font-semibold">
+        <.turn_badge turn={@turn} />
+        <%= case @turn do %>
+          <% :human -> %>
+            You decide what happens next.
+          <% {:agent, _} -> %>
+            An agent works on this step.
+          <% _ -> %>
+            This step ends the lifecycle.
+        <% end %>
+      </h2>
+
+      <%= if @turn == :human do %>
+        <ul id="open-decisions" class="mt-3 space-y-1.5 text-sm">
+          <li :if={@decisions == []} class="italic text-base-content/70">
+            No decision is open in this step.
+          </li>
+          <li :for={%{t: t, unmet: unmet} <- @decisions} id={"decision-#{dashed(t.name)}"}>
+            <a href={"#transition-#{dashed(t.name)}"} class="font-medium underline">{t.name}</a>
+            → {TaskType.step_label(@task.type, t.to)}: <span :if={unmet == []}>ready.</span>
+            <span :if={unmet != []} data-role="missing">
+              still missing: {Enum.join(unmet, "; ")}.
+            </span>
+          </li>
+        </ul>
+        <button
+          :if={@task.type == :pr_review and @task.step == "quiz" and !@task.quiz_skipped}
+          id="skip-quiz"
+          type="button"
+          phx-click="skip_quiz"
+          data-confirm="Skip the quiz and let the agent write its findings?"
+          class="mt-3 rounded-lg border border-base-300 px-3 py-1.5 text-sm font-medium transition hover:bg-base-200"
+        >
+          Skip quiz
+        </button>
+      <% end %>
+
+      <%= case @turn do %>
+        <% {:agent, command} -> %>
+          <p id="turn-command" class="mt-2 text-sm">
+            <%= if command do %>
+              Run <code class="rounded bg-base-200 px-1">{command}</code>
+            <% else %>
+              An agent continues
+            <% end %>
+            <%= if @task.worktree do %>
+              in worktree <strong>{@task.worktree.name}</strong>.
+            <% else %>
+              in the worktree that should take it up; no worktree has claimed this task yet.
+            <% end %>
+          </p>
+          <p id="turn-session" class="mt-1 text-sm text-base-content/70">
+            <%= case @working do %>
+              <% [] -> %>
+                No session is working on it right now.
+              <% sessions -> %>
+                {Enum.map_join(sessions, ", ", &session_name/1)} is working on it now.
+            <% end %>
+          </p>
+          <p :if={@decisions != []} class="mt-1 text-sm text-base-content/70">
+            Your buttons still work: {Enum.map_join(@decisions, ", ", & &1.t.name)}.
+          </p>
+        <% _ -> %>
+      <% end %>
+
+      <div
+        :if={@task.type == :feature and @task.step in ~w(design acceptance)}
+        id="turn-evidence"
+        class="mt-3 grid gap-2 text-sm md:grid-cols-2"
+      >
+        <div id="turn-review" class="rounded-xl bg-base-200/60 p-3">
+          <p class="font-medium">Review in a fresh context</p>
+          <%= case @review do %>
+            <% [] -> %>
+              <p>No review report yet.</p>
+            <% widgets -> %>
+              <% findings = Enum.flat_map(widgets, & &1.data["findings"]) %>
+              <p>
+                {if findings == [],
+                  do: "No findings.",
+                  else:
+                    "#{length(findings)} finding(s): #{findings |> Enum.frequencies_by(& &1["severity"]) |> Enum.map_join(", ", fn {k, v} -> "#{v} #{k}" end)}."}
+                <span :if={Enum.any?(widgets, & &1.human["stale"])} class="font-semibold">Out of date.</span>
+              </p>
+              <.link patch={"#{@path}?section=review"} class="underline">Read the review</.link>
+          <% end %>
+        </div>
+        <div :if={@task.step == "acceptance"} id="turn-proof" class="rounded-xl bg-base-200/60 p-3">
+          <p class="font-medium">Evidence</p>
+          <%= case @evidence do %>
+            <% nil -> %>
+              <p>No evidence recorded.</p>
+            <% w -> %>
+              <% rows = w.data["requirements"] %>
+              <p>
+                Check {w.data["result"]}; {Enum.count(rows, &(&1["result"] == "passed"))} of {length(
+                  rows
+                )} tests passed.
+                <span :if={w.human["stale"]} class="font-semibold">Out of date.</span>
+              </p>
+              <.link patch={"#{@path}?section=evidence"} class="underline">Read the evidence</.link>
+          <% end %>
+        </div>
+      </div>
+    </section>
+    """
+  end
+
+  attr :task, :map, required: true
+  attr :matches, :map, required: true
+  attr :error, :string, default: nil
+
+  # The human's own concerns about a pull request, written before the agent's
+  # first-round findings are shown.
+  defp picture_box(assigns) do
+    picture = assigns.task.picture || %{}
+    covered = assigns.matches |> Map.values() |> Enum.reject(&is_nil/1) |> MapSet.new()
+
+    assigns =
+      assign(assigns,
+        picture: picture,
+        pending?: Planning.picture_pending?(assigns.task),
+        covered: covered,
+        matched?: assigns.matches != %{}
+      )
+
+    ~H"""
+    <section id="picture" class="rounded-2xl border-2 border-base-content/70 bg-base-100 p-4">
+      <h2 class="text-sm font-semibold">Your view</h2>
+      <%= if @pending? do %>
+        <p class="mt-1 text-sm">
+          Write your own concerns about this pull request before you see the agent's findings.
+          The findings stay hidden until you save or skip.
+        </p>
+      <% end %>
+      <ul :if={@picture["state"] == "saved"} id="picture-concerns" class="mt-2 space-y-1 text-sm">
+        <li
+          :for={c <- @picture["concerns"]}
+          id={"concern-#{c["id"]}"}
+          class="flex flex-wrap items-center gap-2"
+        >
+          <span class="font-mono text-xs">{c["id"]}</span>
+          <span>{c["text"]}</span>
+          <span
+            :if={@matched? and not MapSet.member?(@covered, c["id"])}
+            id={"concern-badge-#{c["id"]}"}
+            class="rounded-md border border-base-content/40 px-1.5 py-0.5 text-[0.6875rem] font-semibold"
+          >
+            Only you
+          </span>
+        </li>
+      </ul>
+      <p :if={@picture["state"] == "skipped"} class="mt-1 text-sm text-base-content/70">
+        You skipped your view.
+      </p>
+      <form
+        :if={@picture["state"] != "not_asked"}
+        id="picture-form"
+        phx-submit="save_picture"
+        class="mt-3 space-y-2"
+      >
+        <label for="picture-text" class="text-sm font-medium">
+          {if @picture["state"] == "saved",
+            do: "Change your concerns",
+            else: "Your concerns, one per line"}
+        </label>
+        <textarea
+          id="picture-text"
+          name="picture"
+          rows="4"
+          aria-invalid={@error && "true"}
+          aria-describedby={@error && "picture-error"}
+          class="w-full rounded-xl border border-base-300 bg-base-100 px-3 py-2 text-sm"
+        >{@picture["text"]}</textarea>
+        <p :if={@error} id="picture-error" role="alert" class="text-sm text-error">{@error}</p>
+        <div class="flex flex-wrap gap-2">
+          <button
+            id="save-picture"
+            type="submit"
+            class="rounded-lg bg-base-content px-3 py-1.5 text-sm font-medium text-base-100 hover:opacity-85"
+          >
+            Save your view
+          </button>
+          <button
+            :if={@pending?}
+            id="skip-picture"
+            type="button"
+            phx-click="skip_picture"
+            class="rounded-lg border border-base-300 px-3 py-1.5 text-sm font-medium hover:bg-base-200"
+          >
+            Skip and show the findings
+          </button>
+        </div>
+      </form>
+    </section>
+    """
+  end
+
+  defp dashed(name), do: String.replace(name, " ", "-")
 end

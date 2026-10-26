@@ -5,7 +5,7 @@ defmodule JarvisWeb.PlanningComponents do
 
   import JarvisWeb.CoreComponents, only: [icon: 1]
 
-  alias Jarvis.Planning.TaskType
+  alias Jarvis.Planning.{Catalog, Report, TaskType}
   alias Jarvis.Workspaces.{AgentSession, Worktree}
 
   attr :form, :atom, required: true
@@ -294,12 +294,300 @@ defmodule JarvisWeb.PlanningComponents do
             </span>
             <.time_ago at={comment.inserted_at} now={@now} />
           </div>
-          <.markdown text={comment.body} class="text-sm" />
+          <p :if={comment.transition} data-role="move" class="text-sm font-medium">
+            <.icon name="hero-arrow-right-circle-mini" class="size-4" />
+            <%= if comment.transition == "skip quiz" do %>
+              You skipped the quiz.
+            <% else %>
+              You chose <em>{comment.transition}</em>
+              → {comment.to_step |> String.replace("_", " ") |> String.capitalize()}.
+            <% end %>
+          </p>
+          <.markdown :if={comment.body != ""} text={comment.body} class="text-sm" />
         </div>
       </li>
     </ol>
     """
   end
+
+  attr :turn, :any,
+    required: true,
+    doc: "`:human`, `{:agent, command}`, or `:none` (`Planning.turn/1`)"
+
+  attr :id, :string, default: nil
+
+  @doc "Whose turn it is in a task, as a word and an icon, never only a color."
+  def turn_badge(assigns) do
+    ~H"""
+    <span
+      id={@id}
+      data-turn={turn_key(@turn)}
+      class={[
+        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.6875rem] font-semibold",
+        case turn_key(@turn) do
+          "human" -> "bg-base-content text-base-100"
+          "agent" -> "bg-base-200 text-base-content"
+          _ -> "border border-base-300 text-base-content/70"
+        end
+      ]}
+    >
+      <.icon name={turn_icon(@turn)} class="size-3" /> {turn_label(@turn)}
+    </span>
+    """
+  end
+
+  def turn_key(:human), do: "human"
+  def turn_key({:agent, _}), do: "agent"
+  def turn_key(_), do: "none"
+
+  def turn_label(:human), do: "Your turn"
+  def turn_label({:agent, _}), do: "Agent's turn"
+  def turn_label(_), do: "Nobody's turn"
+
+  defp turn_icon(:human), do: "hero-user-mini"
+  defp turn_icon({:agent, _}), do: "hero-cpu-chip-mini"
+  defp turn_icon(_), do: "hero-minus-circle-mini"
+
+  attr :reports, :list, required: true, doc: "unread turn reports, newest first"
+  attr :history, :list, required: true, doc: "read turn reports, newest first"
+  attr :type, :atom, required: true, doc: "`:goal` or the task type, to name sections"
+  attr :path, :string, required: true, doc: "the page, to link to a widget's section"
+  attr :now, DateTime, required: true
+
+  attr :hidden_sections, :list,
+    default: [],
+    doc: "sections whose content the human must not see yet; their changes are named, not shown"
+
+  @doc """
+  What each agent turn changed on the board: unread reports first, each with
+  its changes before and after, the agent's reasons, and what it needs; then
+  the history of read ones.
+  """
+  def turn_reports(assigns) do
+    ~H"""
+    <div id="turn-reports" class="space-y-3">
+      <.report
+        :for={r <- @reports}
+        report={r}
+        type={@type}
+        path={@path}
+        now={@now}
+        read={false}
+        hidden_sections={@hidden_sections}
+      />
+      <details
+        :if={@history != []}
+        id="turn-history"
+        class="rounded-2xl border border-base-300 bg-base-100 p-3"
+      >
+        <summary class="cursor-pointer select-none text-sm font-semibold">
+          Turns ({length(@history)} read)
+        </summary>
+        <div class="mt-3 space-y-3">
+          <.report
+            :for={r <- @history}
+            report={r}
+            type={@type}
+            path={@path}
+            now={@now}
+            read={true}
+            hidden_sections={@hidden_sections}
+          />
+        </div>
+      </details>
+    </div>
+    """
+  end
+
+  attr :report, Report, required: true
+  attr :type, :atom, required: true
+  attr :path, :string, required: true
+  attr :now, DateTime, required: true
+  attr :read, :boolean, required: true
+  attr :hidden_sections, :list, required: true
+
+  defp report(assigns) do
+    ~H"""
+    <article
+      id={"report-#{@report.id}"}
+      data-read={to_string(@read)}
+      class={[
+        "rounded-2xl bg-base-100 p-4",
+        if(@read, do: "border border-base-300", else: "border-2 border-base-content/70 shadow-sm")
+      ]}
+    >
+      <header class="flex flex-wrap items-center gap-2">
+        <h2 class="text-sm font-semibold">
+          {if @read, do: "Turn", else: "Turn report"} by {agent_label(@report)}
+        </h2>
+        <span class="text-xs text-base-content/70"><.time_ago at={@report.updated_at} now={@now} /></span>
+        <button
+          :if={!@read}
+          id={"read-report-#{@report.id}"}
+          type="button"
+          phx-click="read_report"
+          phx-value-report={@report.id}
+          class="ml-auto rounded-lg bg-base-content px-3 py-1.5 text-sm font-medium text-base-100 transition hover:opacity-85"
+        >
+          Mark turn as read
+        </button>
+      </header>
+      <p
+        :if={@report.needs}
+        id={"report-#{@report.id}-needs"}
+        class="mt-2 rounded-lg bg-warning/30 px-3 py-2 text-sm"
+      >
+        <strong>The agent needs from you:</strong> {@report.needs}
+      </p>
+      <ol class="mt-3 space-y-3">
+        <li
+          :for={{e, i} <- Enum.with_index(Report.items(@report))}
+          id={"report-#{@report.id}-entry-#{i}"}
+          data-action={e["action"]}
+          class="rounded-xl bg-base-200/50 p-3 text-sm"
+        >
+          <.report_entry e={e} type={@type} path={@path} hidden_sections={@hidden_sections} />
+        </li>
+      </ol>
+    </article>
+    """
+  end
+
+  attr :e, :map, required: true
+  attr :type, :atom, required: true
+  attr :path, :string, required: true
+  attr :hidden_sections, :list, default: []
+
+  defp report_entry(%{e: %{"action" => "task_created"}} = assigns) do
+    ~H"""
+    <p>
+      <span class="rounded bg-base-content px-1.5 py-0.5 text-xs font-semibold text-base-100">Created</span>
+      Task {@e["title"]} (number {@e["task"]})
+    </p>
+    <.reasons e={@e} />
+    """
+  end
+
+  defp report_entry(%{e: %{"action" => "step"}} = assigns) do
+    ~H"""
+    <p>
+      <span class="rounded bg-base-content px-1.5 py-0.5 text-xs font-semibold text-base-100">Moved</span>
+      {TaskType.step_label(@type, @e["from"])} → {TaskType.step_label(@type, @e["to"])}
+    </p>
+    <.reasons e={@e} />
+    """
+  end
+
+  defp report_entry(%{e: %{"action" => "stale"}} = assigns) do
+    ~H"""
+    <p>
+      <span class="rounded bg-warning/40 px-1.5 py-0.5 text-xs font-semibold text-base-content">Out of date</span>
+      <a href={"#{@path}?section=#{@e["section"]}#widget-#{@e["widget"]}"} class="underline">
+        {Catalog.label(@e["kind"])} W{@e["widget"]}
+      </a>
+      because {@e["because"]}.
+    </p>
+    """
+  end
+
+  # Content, item changes, and reasons could all give the hidden widget away.
+  defp report_entry(%{e: %{"section" => section}, hidden_sections: [_ | _] = hidden} = assigns)
+       when is_binary(section) do
+    if section in hidden, do: hidden_entry(assigns), else: shown_entry(assigns)
+  end
+
+  defp report_entry(assigns), do: shown_entry(assigns)
+
+  defp hidden_entry(assigns) do
+    ~H"""
+    <p class="flex flex-wrap items-center gap-2">
+      <span class="rounded bg-base-content px-1.5 py-0.5 text-xs font-semibold text-base-100">
+        {action_label(@e["action"])}
+      </span>
+      <span>{Catalog.label(@e["kind"])} W{@e["widget"]}</span>
+      <span class="text-base-content/70">in {section_name(@type, @e["section"])}</span>
+    </p>
+    <p data-role="hidden" class="mt-1 text-sm italic text-base-content/80">
+      Hidden until you write or skip your view.
+    </p>
+    """
+  end
+
+  defp shown_entry(assigns) do
+    e = assigns.e
+    text = fn data -> data && Catalog.body_text(%{kind: e["kind"], data: data, human: %{}}) end
+
+    assigns =
+      assign(assigns,
+        before_text: text.(e["before"]),
+        after_text: text.(e["after"]),
+        diff: Catalog.item_diff(e["kind"], e["before"], e["after"])
+      )
+
+    ~H"""
+    <p class="flex flex-wrap items-center gap-2">
+      <span class="rounded bg-base-content px-1.5 py-0.5 text-xs font-semibold text-base-100">
+        {action_label(@e["action"])}
+      </span>
+      <a href={"#{@path}?section=#{@e["section"]}#widget-#{@e["widget"]}"} class="underline">
+        {Catalog.label(@e["kind"])} W{@e["widget"]}
+      </a>
+      <span class="text-base-content/70">
+        in {section_name(@type, @e["section"])}<span :if={@e["action"] == "moved"}>, from {section_name(
+          @type,
+          @e["from_section"]
+        )}</span>
+      </span>
+    </p>
+    <.reasons e={@e} />
+    <ul :if={@diff != []} class="mt-2 space-y-1 text-xs">
+      <li :for={{field, added, removed, changed} <- @diff} data-role="item-diff">
+        <span class="font-semibold">{field}:</span>
+        <span :if={added != []}>Added: {Enum.join(added, ", ")}.</span>
+        <span :if={removed != []}>Removed: {Enum.join(removed, ", ")}.</span>
+        <span :if={changed != []}>Changed: {Enum.join(changed, ", ")}.</span>
+      </li>
+    </ul>
+    <div :if={@e["action"] in ~w(updated deleted added)} class="mt-2 grid gap-2 md:grid-cols-2">
+      <div :if={@e["action"] != "added"} data-role="before">
+        <p class="text-xs font-semibold uppercase tracking-wide text-base-content/70">Before</p>
+        <pre class="mt-1 whitespace-pre-wrap break-words rounded-lg bg-base-100 p-2 font-sans text-xs">{@before_text}</pre>
+      </div>
+      <div :if={@e["action"] != "deleted"} data-role="after">
+        <p class="text-xs font-semibold uppercase tracking-wide text-base-content/70">
+          {if @e["action"] == "added", do: "Content", else: "After"}
+        </p>
+        <pre class="mt-1 whitespace-pre-wrap break-words rounded-lg bg-base-100 p-2 font-sans text-xs">{@after_text}</pre>
+      </div>
+    </div>
+    """
+  end
+
+  attr :e, :map, required: true
+
+  defp reasons(assigns) do
+    ~H"""
+    <p data-role="reason" class="mt-1 text-sm text-base-content/80">
+      <%= case @e["reasons"] || [] do %>
+        <% [] -> %>
+          <em>No reason given.</em>
+        <% reasons -> %>
+          Why: {Enum.join(reasons, " · ")}
+      <% end %>
+    </p>
+    """
+  end
+
+  defp action_label("added"), do: "New"
+  defp action_label("updated"), do: "Changed"
+  defp action_label("deleted"), do: "Removed"
+  defp action_label("moved"), do: "Moved"
+  defp action_label(other), do: other
+
+  defp section_name(type, key), do: TaskType.section_label(type, key)
+
+  defp agent_label(%Report{agent_session: %AgentSession{} = s}), do: session_name(s)
+  defp agent_label(_), do: "an agent"
 
   defp agent_name(%{agent_session: %AgentSession{} = session}), do: session_name(session)
   defp agent_name(_comment), do: "Agent"

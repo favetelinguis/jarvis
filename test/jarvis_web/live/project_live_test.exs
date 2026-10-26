@@ -19,10 +19,7 @@ defmodule JarvisWeb.ProjectLiveTest do
       feature = task!(scope, goal, %{"title" => "Build it"})
       research = task!(scope, goal, %{"title" => "Look into it", "type" => "research"})
 
-      {:ok, finished} =
-        Planning.update_task(scope, task!(scope, goal, %{"type" => "research"}), %{
-          "force_step" => "done"
-        })
+      finished = at_step!(task!(scope, goal, %{"type" => "research"}), "done")
 
       %{goal: goal, feature: feature, research: research, finished: finished}
     end
@@ -115,7 +112,8 @@ defmodule JarvisWeb.ProjectLiveTest do
       assert has_element?(view, "#task-#{newer.id}")
       assert has_element?(view, "#type-research[aria-pressed=true]")
 
-      Planning.update_task(scope, research, %{"force_step" => "done"})
+      at_step!(research, "done", research.step)
+      Jarvis.Workspaces.broadcast_change(scope.project.id)
       assert has_element?(view, "#goals-#{goal.id} [title='2 of 4 done']")
     end
 
@@ -173,9 +171,9 @@ defmodule JarvisWeb.ProjectLiveTest do
   end
 
   test "the activity feed describes a move in step names", %{conn: conn, scope: scope} do
-    task = task!(scope, goal!(scope))
+    task = task!(scope, goal!(scope, %{"poc" => true}))
     {:ok, view, _} = board(conn, scope)
-    Planning.update_task(scope, task, %{"force_step" => "design"})
+    {:ok, _} = Planning.update_task(scope, task, %{"force_step" => "design"})
     assert has_element?(view, "#events", "moved Requirements → Design")
   end
 

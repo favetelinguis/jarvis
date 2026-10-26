@@ -22,6 +22,7 @@ defmodule Jarvis.Planning.Catalog do
   @review_states ~w(approved changes_requested commented)
   @finding_statuses ~w(resolved open location_gone)
   @verdicts ~w(approve request_changes comment)
+  @results ~w(passed failed)
 
   @kinds [
     {"prose", "Prose", "Markdown text, for what no other widget kind expresses better.",
@@ -116,7 +117,10 @@ defmodule Jarvis.Planning.Catalog do
                {"correct", :bool, []},
                {"explanation", :text, required: true}
              ]}, []},
-           {"model_answer", :text, doc: "Required for text questions"}
+           {"model_answer", :text, doc: "Required for text questions"},
+           {"explains", :string,
+            doc:
+              "Learn: id of the explanation widget the question tests, e.g. W12; a wrong answer marks it out of date"}
          ]}, required: true}
      ]},
     {"comparison", "Comparison matrix",
@@ -173,6 +177,30 @@ defmodule Jarvis.Planning.Catalog do
            {"line", :string, []},
            {"explanation", :text, required: true},
            {"suggestion", :text, []}
+         ]}, required: true}
+     ]},
+    {"evidence", "Evidence",
+     "What the agent ran before handing over: the check command, its result, a short excerpt of its output, and one row per requirement with its test and whether it passed. Each row names a requirement card of the task. Jarvis checks what the evidence says; it runs nothing.",
+     [
+       {"command", :string, required: true, doc: "The check command, e.g. mise run check"},
+       {"result", {:enum, @results}, required: true},
+       {"excerpt", :text, doc: "A short excerpt of the output"},
+       {"requirements",
+        {:list, "row",
+         [
+           {"requirement", :string, required: true, doc: "Requirement id, e.g. R1"},
+           {"test", :string, required: true, doc: "file > test name"},
+           {"result", {:enum, @results}, required: true}
+         ]}, required: true}
+     ]},
+    {"view_matches", "Your view matched",
+     "PR review: which of the human's concerns (c1, c2, … from their view) each first-round finding covers. Leave concern out when no concern covers the finding. Never changes the human's concerns; the human can change each match.",
+     [
+       {"matches",
+        {:list, "m",
+         [
+           {"finding", :string, required: true, doc: "Finding id, e.g. f1"},
+           {"concern", :string, doc: "Concern id, e.g. c2; omit for none"}
          ]}, required: true}
      ]},
     {"discussion", "Existing PR discussion",
@@ -600,6 +628,20 @@ defmodule Jarvis.Planning.Catalog do
     end
   end
 
+  def parts("evidence", d) do
+    for r <- d["requirements"] do
+      {"row:#{r["id"]}", "Evidence for #{r["requirement"]}",
+       "#{r["requirement"]}: #{r["test"]} #{r["result"]}"}
+    end
+  end
+
+  def parts("view_matches", d) do
+    for m <- d["matches"] do
+      {"match:#{m["id"]}", "Match of #{m["finding"]}",
+       "#{m["finding"]} ↔ #{m["concern"] || "none"}"}
+    end
+  end
+
   def parts("discussion", d) do
     for i <- d["items"] || [] do
       {"item:#{i["id"]}", "#{i["type"]} by #{i["author"]}", item_text(i)}
@@ -814,6 +856,26 @@ defmodule Jarvis.Planning.Catalog do
     end)
   end
 
+  def body_text(%{kind: "evidence", data: d}) do
+    rows =
+      Enum.map(
+        d["requirements"],
+        &"- row:#{&1["id"]} #{&1["requirement"]}: #{&1["test"]} — #{&1["result"]}"
+      )
+
+    excerpt = if d["excerpt"], do: ["```", d["excerpt"], "```"], else: []
+    Enum.join(["Check `#{d["command"]}`: #{d["result"]}" | excerpt] ++ rows, "\n")
+  end
+
+  def body_text(%{kind: "view_matches", data: d, human: h}) do
+    mine = h["matches"] || %{}
+
+    Enum.map_join(d["matches"], "\n", fn m ->
+      human = if Map.has_key?(mine, m["finding"]), do: " — human: #{mine[m["finding"]]}", else: ""
+      "- match:#{m["id"]} #{m["finding"]} ↔ #{m["concern"] || "none"}#{human}"
+    end)
+  end
+
   def body_text(%{kind: "discussion", data: d}) do
     items = d["items"] || []
 
@@ -996,6 +1058,54 @@ defmodule Jarvis.Planning.Catalog do
     Enum.all?(questions, &(get_in(answers, [&1["id"], "correct"]) == true))
   end
 
+  @doc "Ids of the quiz's questions without any answer yet."
+  def quiz_unanswered(%{"questions" => questions}, human) do
+    answers = human["answers"] || %{}
+    for q <- questions, not Map.has_key?(answers, q["id"]), do: q["id"]
+  end
+
+  @doc """
+  The effective match of each finding of a `view_matches` widget: the human's
+  choice where they made one, else the agent's. `finding id => concern id | nil`.
+  """
+  def view_matches(%{data: d, human: h}) do
+    mine = h["matches"] || %{}
+
+    Map.new(d["matches"], fn m ->
+      case Map.fetch(mine, m["finding"]) do
+        {:ok, "none"} -> {m["finding"], nil}
+        {:ok, concern} -> {m["finding"], concern}
+        :error -> {m["finding"], m["concern"]}
+      end
+    end)
+  end
+
+  @doc """
+  What changed in the list items of a widget between two versions of its
+  data, by item id: `[{field, added, removed, changed}]` with item ids, for
+  every list field that changed.
+  """
+  def item_diff(kind, before, after_) when is_map(before) and is_map(after_) do
+    for {name, {:list, _, _} = _t, _} <- list_fields(kind),
+        old = Map.new(before[name] || [], &{&1["id"], &1}),
+        new = Map.new(after_[name] || [], &{&1["id"], &1}),
+        added = for(id <- ids(after_[name]), not Map.has_key?(old, id), do: id),
+        removed = for(id <- ids(before[name]), not Map.has_key?(new, id), do: id),
+        changed = for(id <- ids(after_[name]), Map.has_key?(old, id), old[id] != new[id], do: id),
+        added != [] or removed != [] or changed != [] do
+      {name, added, removed, changed}
+    end
+  end
+
+  def item_diff(_kind, _before, _after), do: []
+
+  defp list_fields(kind) do
+    for {name, type, opts} <- fields(kind),
+        match?({:list, _, _}, type) or match?({:list, _, _, _}, type) do
+      {name, {:list, nil, nil}, opts}
+    end
+  end
+
   @doc "Ids of the quiz's questions without a correct latest answer."
   def quiz_open_questions(%{"questions" => questions}, human) do
     answers = human["answers"] || %{}
@@ -1035,6 +1145,15 @@ defmodule Jarvis.Planning.Catalog do
     if f in ids(d["findings"]) and m in @marks,
       do: {:ok, Map.update(h, "marks", %{f => m}, &Map.put(&1, f, m)), []},
       else: {:error, "unknown finding or mark"}
+  end
+
+  def human_action(%{kind: "view_matches", data: d, human: h}, "match", %{
+        "finding" => f,
+        "concern" => c
+      }) do
+    if f in Enum.map(d["matches"], & &1["finding"]) and is_binary(c) and c != "",
+      do: {:ok, Map.update(h, "matches", %{f => c}, &Map.put(&1, f, c)), []},
+      else: {:error, "unknown finding"}
   end
 
   def human_action(%{kind: "diagram", data: d, human: h}, "render_error", %{"message" => msg}) do
@@ -1489,6 +1608,29 @@ defmodule Jarvis.Planning.Catalog do
           "path" => "README.md",
           "explanation" => "Typo in the tools table."
         }
+      ]
+    }
+
+  def example("evidence"),
+    do: %{
+      "command" => "mise run check",
+      "result" => "passed",
+      "excerpt" => "Finished in 14.5 seconds\n265 tests, 0 failures",
+      "requirements" => [
+        %{
+          "id" => "row1",
+          "requirement" => "R3",
+          "test" => "test/jarvis/planning_test.exs > confirming a requirement shows it confirmed",
+          "result" => "passed"
+        }
+      ]
+    }
+
+  def example("view_matches"),
+    do: %{
+      "matches" => [
+        %{"id" => "m1", "finding" => "f1", "concern" => "c1"},
+        %{"id" => "m2", "finding" => "f2"}
       ]
     }
 

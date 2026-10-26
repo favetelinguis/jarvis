@@ -9,7 +9,14 @@ defmodule JarvisWeb.ProjectLive do
   alias Jarvis.Planning.TaskType
   alias Jarvis.Workspaces.AgentSession
 
-  @type filter :: %{unfinished: boolean(), type: TaskType.key() | nil, step: String.t() | nil}
+  @type filter :: %{
+          unfinished: boolean(),
+          mine: boolean(),
+          type: TaskType.key() | nil,
+          step: String.t() | nil
+        }
+
+  @no_filter %{unfinished: false, mine: false, type: nil, step: nil}
 
   @tick_ms 20_000
 
@@ -28,7 +35,7 @@ defmodule JarvisWeb.ProjectLive do
      socket
      |> assign(:page_title, project.name)
      |> assign(:scope, Scope.for_human(project))
-     |> assign(:filter, %{unfinished: false, type: nil, step: nil})
+     |> assign(:filter, @no_filter)
      |> load()}
   end
 
@@ -44,10 +51,11 @@ defmodule JarvisWeb.ProjectLive do
   def handle_event("filter", %{"filter" => "unfinished"}, socket),
     do: {:noreply, socket |> update_filter(&%{&1 | unfinished: not &1.unfinished}) |> load()}
 
+  def handle_event("filter", %{"filter" => "mine"}, socket),
+    do: {:noreply, socket |> update_filter(&%{&1 | mine: not &1.mine}) |> load()}
+
   def handle_event("filter", _params, socket),
-    do:
-      {:noreply,
-       socket |> update_filter(fn _ -> %{unfinished: false, type: nil, step: nil} end) |> load()}
+    do: {:noreply, socket |> update_filter(fn _ -> @no_filter end) |> load()}
 
   def handle_event("type", %{"type" => type}, socket) do
     type = TaskType.parse(type)
@@ -124,7 +132,7 @@ defmodule JarvisWeb.ProjectLive do
                 id="filter-all"
                 event="filter"
                 value={%{filter: "all"}}
-                active={@filter == %{unfinished: false, type: nil, step: nil}}
+                active={@filter == %{unfinished: false, mine: false, type: nil, step: nil}}
               >All</.filter_button>
               <.filter_button
                 id="filter-unfinished"
@@ -132,6 +140,12 @@ defmodule JarvisWeb.ProjectLive do
                 value={%{filter: "unfinished"}}
                 active={@filter.unfinished}
               >Unfinished</.filter_button>
+              <.filter_button
+                id="filter-mine"
+                event="filter"
+                value={%{filter: "mine"}}
+                active={@filter.mine}
+              >Your turn</.filter_button>
               <span class="mx-1 w-px self-stretch bg-base-300" />
               <.filter_button
                 :for={type <- TaskType.keys()}
@@ -208,6 +222,7 @@ defmodule JarvisWeb.ProjectLive do
                     ]}>
                       {task.title}
                     </span>
+                    <.turn_badge id={"turn-#{task.id}"} turn={Planning.turn(task)} />
                     <.worktree_chip worktree={task.worktree} />
                     <span
                       :for={session <- Map.get(@focus, task.id, [])}
@@ -262,6 +277,7 @@ defmodule JarvisWeb.ProjectLive do
   defp matching_tasks(tasks, filter) do
     Enum.filter(tasks, fn task ->
       (not filter.unfinished or task.step != "done") and
+        (not filter.mine or Planning.turn(task) == :human) and
         (filter.type == nil or task.type == filter.type) and
         (filter.step == nil or task.step == filter.step)
     end)

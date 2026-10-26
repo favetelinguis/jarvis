@@ -99,17 +99,48 @@ defmodule Jarvis.Planning.Markdown do
 
         transitions ->
           for t <- transitions do
-            mover = if t.mover == :human, do: "the human", else: "an agent (#{t.command})"
+            mover =
+              if t.mover == :human,
+                do: "the human only (a button on the task page; never make it yourself)",
+                else: "an agent (#{t.command})"
+
             unmet = Planning.unmet_conditions(task, t, widgets)
             blocked = if unmet == [], do: "", else: " — blocked: #{Enum.join(unmet, "; ")}"
+            comment = if t[:comment], do: ", with the human's comment", else: ""
 
-            "- \"#{t.name}\" → #{TaskType.step_label(type, t.to)}, moved by #{mover}#{blocked}"
+            "- \"#{t.name}\" → #{TaskType.step_label(type, t.to)}, moved by #{mover}#{comment}#{blocked}"
           end
+      end
+
+    turn =
+      case Planning.turn(task) do
+        :human ->
+          "**Turn:** the human's. Wait for their decision; work only on what their comments ask."
+
+        {:agent, command} ->
+          handoff =
+            if step in TaskType.handoff_steps(type),
+              do:
+                " When your work in this step is ready for the human, hand it over with jarvis_task_save `handoff: true`.",
+              else: ""
+
+          "**Turn:** the agent's#{if command, do: " (#{command})"}.#{handoff}"
+
+        :none ->
+          "**Turn:** nobody's."
+      end
+
+    owned =
+      case TaskType.owned_sections(type, step) do
+        [] -> "**Sections you may write in this step:** none."
+        keys -> "**Sections you may write in this step:** #{Enum.join(keys, ", ")}."
       end
 
     Enum.join(
       [
         "**Type:** #{TaskType.label(type)}  \n**Step:** #{TaskType.step_label(type, step)}#{previous}",
+        turn,
+        owned,
         "**Transitions out of this step** (move with jarvis_task_save transition):"
         | transitions
       ],
@@ -147,6 +178,41 @@ defmodule Jarvis.Planning.Markdown do
   is now, and how to answer.
   """
   def wake(comments) do
+    {plain, anchored} = Enum.split_with(comments, &is_nil(&1.anchor_label))
+
+    moves =
+      Enum.map(plain, fn %Comment{} = c ->
+        target = if c.task, do: Planning.ref(%{c.task | goal: c.goal}), else: Planning.ref(c.goal)
+
+        case c.transition do
+          nil ->
+            "### The human on #{target}\n\n#{c.body}"
+
+          "skip quiz" ->
+            "### The human skipped the quiz of #{target}\n\nWrite the findings now; `findings ready` no longer waits for answers."
+
+          name ->
+            step =
+              if c.task, do: TaskType.step_label(c.task.type, c.to_step), else: c.to_step
+
+            comment = if c.body == "", do: "", else: "\n\nTheir comment:\n\n#{c.body}"
+            "### The human moved #{target}: \"#{name}\" → #{step}#{comment}"
+        end
+      end)
+
+    if anchored == [] do
+      join(["# Moves and messages from the human in Jarvis" | moves])
+    else
+      anchored_text = wake_anchored(anchored)
+
+      if moves == [],
+        do: anchored_text,
+        else:
+          join(["# Moves and messages from the human in Jarvis" | moves]) <> "\n" <> anchored_text
+    end
+  end
+
+  defp wake_anchored(comments) do
     items =
       Enum.map(comments, fn %Comment{} = c ->
         target = if c.task, do: Planning.ref(%{c.task | goal: c.goal}), else: Planning.ref(c.goal)

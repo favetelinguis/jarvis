@@ -14,6 +14,8 @@ defmodule Jarvis.Workspaces.AgentSession do
     field :state, Ecto.Enum, values: [:idle, :working, :ended], default: :idle
     field :last_seen_at, :utc_datetime_usec
     field :inbox_cursor, :integer, default: 0
+    # Counts the session's agent turns: one more each time it starts working
+    field :turn, :integer, default: 0
     belongs_to :project, Jarvis.Workspaces.Project
     belongs_to :worktree, Jarvis.Workspaces.Worktree
     belongs_to :task, Jarvis.Planning.Task

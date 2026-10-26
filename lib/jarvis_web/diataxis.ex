@@ -31,7 +31,9 @@ defmodule JarvisWeb.Diataxis do
       "out_of_scope" => :reference,
       "open_questions" => :reference,
       "sketch" => :explanation,
-      "tests" => :reference
+      "tests" => :reference,
+      "review" => :reference,
+      "evidence" => :reference
     },
     research: %{
       "question" => :reference,
@@ -48,6 +50,7 @@ defmodule JarvisWeb.Diataxis do
       "code" => :explanation,
       "quiz" => :tutorial,
       "rounds" => :reference,
+      "picture" => :reference,
       "findings" => :reference,
       "comments" => :reference,
       "verdict" => :reference

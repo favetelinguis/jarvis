@@ -12,21 +12,31 @@ Read-only: do not modify files. Use the goal's Intent and Glossary, the task's r
 
 ## Tasks in Jarvis
 
-Goals and tasks live in Jarvis, a live board I watch in the browser, never in files. Use its tools:
+Goals and tasks live in Jarvis, a live board I watch in the browser. `jarvis_read` with no arguments shows this project's board; with `goal` a whole goal; with `goal` and `task` a whole task: its type, its step, whose turn it is, the sections you may write, the transitions out of it, every widget with its widget id and part ids, and its comments. All worktrees of a repository share one board. Goals are numbered per project and tasks per goal; refer to them as Goal N and Task N.M.
 
-- `jarvis_read`: no arguments for this project's board; `goal` for a whole goal; `goal` and `task` for a whole task: its type, step, the transitions out of it, every section as widgets with widget ids and part ids, and its comments.
-- `jarvis_goal_save` and `jarvis_task_save`: create (no number) or update (with a number) a goal or task: its title, its type (on create), its claim, and its transitions. Sections are not fields: they are widgets.
-- `jarvis_widgets`: add, update, move, and delete the widgets in a goal's or task's sections, several operations at once. `jarvis_catalog` lists every widget kind with its fields and each section's recommended kinds.
-- `jarvis_comment`: a note I see on the board, for handoffs and decisions to double check; `reply_to` answers a comment on a widget.
+<!-- board-rules -->
+### Board rules
 
-Jarvis resolves the project from the working directory: all worktrees and sessions of a repository share one board. Outside a git repository, the directory is its own project.
+The same rules hold in every Jarvis workflow. The board enforces what it can; you keep the rest.
 
-- Goals are numbered per project and tasks per goal; Jarvis assigns the next free number. Refer to them as Goal N and Task N.M.
-- Write every section as widgets, preferring visual ones over prose: each requirement is a `requirement` card (id `R1`…, with its EARS pattern), Examples is an `examples` table, each Glossary term a `glossary_term`, each Decision a `decision`, a Sketch uses `prose`, `diagram`, `architecture`, or `walkthrough`. When you update a widget keep its list items' ids, so my comments, answers, and confirmations stay attached.
-- A Feature task is in one step of its lifecycle: Requirements, Design, Implementation, Review, Done. Move it with `jarvis_task_save` `transition`, the moment it changes: "approve design" (/design-review), "requirements question" (/design), "implemented" (/impl), "approve" and "request changes" (/impl-review). "approve requirements" is my decision, after I confirm each requirement card: you never make it, and a task still in Requirements is not yours to design.
-- A task belongs to the worktree that claimed it (`claim: true`), shown as its **Worktree:** line. /design claims a task when it takes it up; /impl and /impl-review work only on tasks this worktree claimed.
-- My comments from the board arrive at the start of a turn as "New comments from the human in Jarvis"; treat them as my word on that goal or task. A message "Comments on widgets in Jarvis" is me pointing at one widget or part: change that widget with `jarvis_widgets`, or, if it is only a question, answer it with `jarvis_comment` `reply_to`.
-- If a Jarvis tool reports that the server is unreachable, stop and tell me; never fall back to files.
+1. MUST keep goals and tasks in Jarvis, never in files: read with `jarvis_read`, write with `jarvis_goal_save`, `jarvis_task_save`, `jarvis_widgets`, and `jarvis_comment`.
+2. MUST write every section as widgets from `jarvis_catalog`, preferring visual ones over prose, and keep the ids of list items when you update a widget, so my comments, answers, and confirmations stay attached.
+3. MUST write in a task only the sections its current step owns; `jarvis_read` lists them for the step.
+4. MUST NOT make a transition whose mover is the human, even when I ask for it in the chat: tell me which button to press on the task page.
+5. MUST make the transitions this workflow owns, listed below, the moment they hold, and no others.
+6. MUST hand a step over with `jarvis_task_save` `handoff: true` when your work in a step that is handed over is ready for my decision.
+7. MUST give `reason` in one line on every `jarvis_widgets` and `jarvis_task_save` call; when the change records my answer to question Qn, start it with the number, e.g. `Q3 → R2 reworded`.
+8. MUST give `needs` in one line when I must do something before you can go on.
+9. MUST treat what arrives from the board at the start of a turn as my word: "Moves and messages from the human in Jarvis" (a move I made, with my comment), "New comments from the human in Jarvis", and "Comments on widgets in Jarvis" (change that widget, or answer it with `jarvis_comment` `reply_to` if it is only a question).
+10. MUST write a widget marked Out of date again before you rely on it; writing it again clears the mark.
+11. MUST NOT use `force_step`; only /poc uses it, and only in a goal marked POC.
+12. MUST work on a Feature task past Requirements only from the worktree that claimed it (`claim: true`).
+13. MUST stop and tell me when a Jarvis tool reports that the server is unreachable; never fall back to files.
+<!-- /board-rules -->
+
+### Transitions this workflow owns
+
+- None. This workflow is a read-only check: it changes neither files nor the board, and it reports only in the chat. "approve design" and "request design changes" are my buttons on the task page.
 
 Report briefly, skipping any section with nothing to say except implementation blockers, which you always report:
 
@@ -38,7 +48,7 @@ Report briefly, skipping any section with nothing to say except implementation b
 6. **Sketch quality:** bodies that were written; major parts with no `SKETCH:` comment; comments too vague to implement from, or that omit an edge case or error the requirements name; detail that belongs to the implementer.
 7. **Next:** what to resolve before this task is ready, implementation blockers first, as concrete questions or edits. Put the ones that need my decision to me by the interview protocol below, until none is open.
 
-Be direct and prioritised; a long list of nits hides the real problems. Do not start fixing anything: I will decide and continue the design. When I say the design is approved, move the task with `jarvis_task_save` `transition: "approve design"`.
+Be direct and prioritised; a long list of nits hides the real problems. Do not start fixing anything: I will decide and continue the design. Leave the board and the task's step as they are, and report only here in the chat: approving the design is my button on the task page.
 
 ## Interview protocol
 

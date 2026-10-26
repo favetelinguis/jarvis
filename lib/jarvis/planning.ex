@@ -10,7 +10,7 @@ defmodule Jarvis.Planning do
 
   import Ecto.Query
 
-  alias Jarvis.Planning.{Catalog, Comment, Event, Goal, Task, TaskType, Widget}
+  alias Jarvis.Planning.{Catalog, Comment, Event, Goal, Report, Task, TaskType, Widget}
   alias Jarvis.Repo
   alias Jarvis.Scope
   alias Jarvis.Workspaces
@@ -160,6 +160,13 @@ defmodule Jarvis.Planning do
           "created #{ref(task)} (#{TaskType.label(task.type)}): #{task.title}"
         )
 
+        report!(scope, goal, nil, %{
+          "action" => "task_created",
+          "task" => task.number,
+          "title" => task.title,
+          "reasons" => List.wrap(attrs |> get(:reason) |> blank_to_nil())
+        })
+
         Workspaces.focus(scope, task.id)
         {:ok, task}
       end
@@ -186,26 +193,37 @@ defmodule Jarvis.Planning do
 
   - `title`
   - `claim`: `true` claims the task for the caller's worktree, `false` releases it
-  - `transition`: moves the task along the named transition out of its current step
-  - `force_step`: jumps straight to a step, ignoring the lifecycle (proof-of-concept runs)
+  - `transition`: moves the task along the named transition out of its current
+    step; `comment` says what to change (required where the transition says
+    so) and `new_title` names the task a `spec issue` splits off
+  - `force_step`: jumps straight to a step, ignoring the lifecycle (POC goals only)
+  - `handoff`: `true` gives the turn to the human without leaving the step
 
-  A task's type never changes. A task an agent changes becomes that session's focus.
+  A move the human makes is delivered to the listening session. A task's type
+  never changes. A task an agent changes becomes that session's focus.
+  `reason` and `needs` go into the agent's turn report.
   """
   def update_task(%Scope{} = scope, %Task{} = task, attrs) do
     task = Repo.preload(task, [:goal, :worktree])
+    move = plan_move(scope, task, attrs)
 
     changeset =
       task
       |> Task.title_changeset(attrs)
       |> put_claim(scope, attrs)
       |> reject_type_change(task, attrs)
-      |> put_move(scope, task, attrs)
+      |> put_move(task, move)
+      |> put_handoff(scope, task, attrs)
 
     Repo.transact(fn ->
-      with {:ok, updated} <- Repo.update(changeset) do
-        if summary = describe(changeset) do
+      with {:ok, updated} <- Repo.update(changeset),
+           {:ok, _} <- after_move(scope, task, %{updated | goal: task.goal}, move, attrs) do
+        if summary = describe(changeset, move) do
           record!(scope, task.goal, updated, "#{ref(updated)}: #{summary}")
         end
+
+        if needs = attrs |> get(:needs) |> blank_to_nil(),
+          do: put_needs!(scope, task.goal, task, needs)
 
         Workspaces.focus(scope, task.id)
         {:ok, Repo.preload(updated, :worktree, force: true)}
@@ -215,8 +233,8 @@ defmodule Jarvis.Planning do
   end
 
   @doc "Moves a task along the named transition; see `update_task/3`."
-  def move_task(scope, task, transition),
-    do: update_task(scope, task, %{"transition" => transition})
+  def move_task(scope, task, transition, attrs \\ %{}),
+    do: update_task(scope, task, Map.put(attrs, "transition", transition))
 
   defp reject_type_change(changeset, task, attrs) do
     case get(attrs, :type) do
@@ -230,40 +248,200 @@ defmodule Jarvis.Planning do
     end
   end
 
-  defp put_move(changeset, scope, task, attrs) do
+  # What the call asks for: nil, {:transition, t}, {:force, step}, or {:error, field, message}.
+  defp plan_move(scope, task, attrs) do
     case {get(attrs, :transition), get(attrs, :force_step)} do
       {nil, nil} ->
-        changeset
+        nil
 
       {name, nil} ->
-        case check_transition(scope, task, name) do
-          {:ok, transition} -> put_step(changeset, task, transition.to)
-          {:error, reason} -> Ecto.Changeset.add_error(changeset, :transition, reason)
+        with {:ok, t} <- check_transition(scope, task, name),
+             :ok <- check_move_comment(t, attrs) do
+          {:transition, t}
+        else
+          {:error, field, reason} -> {:error, field, reason}
+          {:error, reason} -> {:error, :transition, reason}
         end
 
       {nil, step} ->
-        if TaskType.step?(task.type, step),
-          do: put_step(changeset, task, step),
-          else:
-            Ecto.Changeset.add_error(
-              changeset,
-              :force_step,
-              "no step #{inspect(step)}; steps: #{Enum.map_join(TaskType.steps(task.type), ", ", &elem(&1, 0))}"
-            )
+        cond do
+          not poc_goal?(task) ->
+            {:error, :force_step,
+             "force_step is only for POC goals; mark the goal POC with /poc, or move with a transition"}
+
+          TaskType.step?(task.type, step) ->
+            {:force, step}
+
+          true ->
+            {:error, :force_step,
+             "no step #{inspect(step)}; steps: #{Enum.map_join(TaskType.steps(task.type), ", ", &elem(&1, 0))}"}
+        end
 
       _ ->
-        Ecto.Changeset.add_error(
-          changeset,
-          :transition,
-          "give transition or force_step, not both"
-        )
+        {:error, :transition, "give transition or force_step, not both"}
     end
   end
+
+  defp poc_goal?(%Task{goal_id: id}),
+    do: Repo.one!(from g in Goal, where: g.id == ^id, select: g.poc)
+
+  defp check_move_comment(t, attrs) do
+    cond do
+      t[:comment] && blank?(get(attrs, :comment)) ->
+        {:error, :comment, "\"#{t.name}\" needs a comment that says what to change"}
+
+      t[:creates_task] && blank?(get(attrs, :new_title)) ->
+        {:error, :new_title, "\"#{t.name}\" needs a title for the new task"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp blank?(value), do: value in [nil, ""] or (is_binary(value) and String.trim(value) == "")
+
+  defp put_move(changeset, _task, nil), do: changeset
+
+  defp put_move(changeset, _task, {:error, field, reason}),
+    do: Ecto.Changeset.add_error(changeset, field, reason)
+
+  defp put_move(changeset, task, {:force, step}), do: put_step(changeset, task, step)
+
+  # Sending work back without leaving the step gives the turn to the agent;
+  # a spec issue sends the work to a new task instead.
+  defp put_move(changeset, _task, {:transition, %{from: step, to: step} = t}) do
+    if t[:comment] && !t[:creates_task],
+      do: Ecto.Changeset.put_change(changeset, :turn, :agent),
+      else: changeset
+  end
+
+  defp put_move(changeset, task, {:transition, t}), do: put_step(changeset, task, t.to)
 
   defp put_step(changeset, task, step) do
     changeset
     |> Ecto.Changeset.put_change(:step, step)
     |> Ecto.Changeset.put_change(:previous_step, task.step)
+    |> Ecto.Changeset.force_change(:turn, nil)
+    |> then(&if step == "quiz", do: Ecto.Changeset.put_change(&1, :quiz_skipped, false), else: &1)
+  end
+
+  defp put_handoff(changeset, scope, task, attrs) do
+    if get(attrs, :handoff) in [true, "true"] do
+      case check_handoff(scope, task) do
+        :ok -> Ecto.Changeset.put_change(changeset, :turn, :human)
+        {:error, reason} -> Ecto.Changeset.add_error(changeset, :handoff, reason)
+      end
+    else
+      changeset
+    end
+  end
+
+  @doc """
+  Whether the scope may hand the task's step over to the human now: only an
+  agent, only in a step that is handed over, only while it is the agent's turn,
+  and Design only with a review report.
+  """
+  def check_handoff(scope, %Task{} = task) do
+    steps = TaskType.handoff_steps(task.type)
+    labels = Enum.map_join(steps, ", ", &TaskType.step_label(task.type, &1))
+
+    cond do
+      not Scope.agent?(scope) ->
+        {:error, "only an agent hands a step over"}
+
+      task.step not in steps or turn(task) == :human ->
+        {:error,
+         "#{TaskType.step_label(task.type, task.step)} cannot be handed over now" <>
+           if(turn(task) == :human, do: " (it is already the human's turn)", else: "") <>
+           "; steps that are handed over: #{labels}"}
+
+      task.type == :feature and task.step == "design" and
+          not Enum.any?(task_widgets(task), &(&1.section == "review" and &1.kind == "findings")) ->
+        {:error,
+         "the review report is missing: run a review in a fresh context and write it as a findings widget in the review section first"}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp task_widgets(task), do: owner_widgets(task.goal_id, task) |> Repo.all()
+
+  @doc """
+  Whose turn it is in the task: `:human`, `{:agent, command}` (command may be
+  nil), or `:none`.
+  """
+  def turn(%Task{} = task) do
+    case {task.turn, TaskType.start_turn(task.type, task.step)} do
+      {:human, _} -> :human
+      {_, {:agent, command, _}} when task.turn in [nil, :agent] -> {:agent, command}
+      {:agent, _} -> {:agent, agent_command(task)}
+      {nil, other} -> other
+    end
+  end
+
+  defp agent_command(task) do
+    Enum.find_value(TaskType.transitions_from(task.type, task.step), & &1[:command])
+  end
+
+  # The move's effects beyond the task row: the message to the listening
+  # session, a split-off task, what becomes out of date, the turn report.
+  defp after_move(scope, task, updated, {:transition, %{mover: :human} = t}, attrs) do
+    if Scope.agent?(scope), do: raise("an agent made a human transition")
+    comment = get(attrs, :comment)
+
+    Repo.insert!(%Comment{
+      goal_id: task.goal_id,
+      task_id: task.id,
+      author: :human,
+      body: if(blank?(comment), do: "", else: String.trim(comment)),
+      transition: t.name,
+      to_step: updated.step,
+      deliver: true
+    })
+
+    if t.name == "dig deeper" do
+      stale = Enum.filter(task_widgets(task), &(&1.section == "recommendation"))
+      mark_stale!(scope, task.goal, task, stale, "you asked to dig deeper", nil)
+    end
+
+    if t[:creates_task],
+      do: split_task(scope, task, get(attrs, :new_title), comment),
+      else: {:ok, nil}
+  end
+
+  defp after_move(scope, task, updated, move, attrs) when move != nil do
+    if Scope.agent?(scope) and updated.step != task.step do
+      report!(scope, task.goal, task, %{
+        "action" => "step",
+        "from" => task.step,
+        "to" => updated.step,
+        "reasons" => List.wrap(attrs |> get(:reason) |> blank_to_nil())
+      })
+    end
+
+    {:ok, nil}
+  end
+
+  defp after_move(_scope, _task, _updated, _move, _attrs), do: {:ok, nil}
+
+  defp split_task(scope, task, title, comment) do
+    with {:ok, new} <- create_task(scope, task.goal, %{"title" => title, "type" => "feature"}) do
+      link = "/projects/#{task.project_id}/goals/#{task.goal.number}/tasks/#{task.number}"
+
+      Repo.insert!(%Widget{
+        project_id: task.project_id,
+        goal_id: task.goal_id,
+        task_id: new.id,
+        section: "intent",
+        position: 1,
+        kind: "prose",
+        data: %{"text" => "#{String.trim(comment)}\n\nSplit off from [#{ref(task)}](#{link})."},
+        human: %{}
+      })
+
+      {:ok, new}
+    end
   end
 
   @doc """
@@ -282,8 +460,10 @@ defmodule Jarvis.Planning do
              else: "allowed: " <> Enum.map_join(allowed, ", ", & &1.name)
            )}
 
-      %{mover: :human} when scope.agent_session != nil ->
-        {:error, "This transition is the human's decision"}
+      %{mover: :human} = t when scope.agent_session != nil ->
+        {:error,
+         "\"#{t.name}\" is the human's decision; no agent can make it. " <>
+           "They press the button on the task page: #{task_url(task)}"}
 
       transition ->
         case unmet_conditions(task, transition) do
@@ -293,30 +473,21 @@ defmodule Jarvis.Planning do
     end
   end
 
-  @doc "Why the transition is not allowed yet, as human-readable reasons; `[]` when it is."
-  def unmet_conditions(%Task{} = task, transition) do
-    widgets = owner_widgets(task.goal_id, task) |> Repo.all()
-    unmet_conditions(task, transition, widgets)
+  defp task_url(task) do
+    task = Repo.preload(task, :goal)
+
+    JarvisWeb.Endpoint.url() <>
+      "/projects/#{task.project_id}/goals/#{task.goal.number}/tasks/#{task.number}"
   end
 
-  def unmet_conditions(_task, transition, widgets) do
-    condition =
-      case transition[:condition] do
-        :requirements_confirmed ->
-          case Enum.filter(widgets, &(&1.kind == "requirement")) do
-            [] ->
-              ["Write at least one requirement card first"]
+  @doc "Why the transition is not allowed yet, as human-readable reasons; `[]` when it is."
+  def unmet_conditions(%Task{} = task, transition) do
+    unmet_conditions(task, transition, task_widgets(task))
+  end
 
-            requirements ->
-              case Enum.reject(requirements, & &1.human["confirmed"]) do
-                [] -> []
-                open -> ["#{Enum.map_join(open, ", ", & &1.data["id"])} not confirmed"]
-              end
-          end
-
-        nil ->
-          []
-      end
+  def unmet_conditions(task, transition, widgets) do
+    conditions =
+      Enum.flat_map(transition[:conditions] || [], &condition(&1, task, widgets))
 
     gates =
       for w <- widgets,
@@ -328,8 +499,171 @@ defmodule Jarvis.Planning do
         "quiz W#{w.id}: #{Enum.join(open, ", ")} not answered correctly"
       end
 
-    condition ++ gates
+    conditions ++ gates
   end
+
+  defp condition(:requirements_confirmed, _task, widgets) do
+    case Enum.filter(widgets, &(&1.kind == "requirement")) do
+      [] ->
+        ["Write at least one requirement card first"]
+
+      requirements ->
+        case Enum.reject(requirements, & &1.human["confirmed"]) do
+          [] -> []
+          open -> ["#{Enum.map_join(open, ", ", & &1.data["id"])} not confirmed"]
+        end
+    end
+  end
+
+  defp condition(:review_current, _task, widgets), do: stale_reasons(widgets, ~w(review))
+
+  defp condition(:evidence_current, _task, widgets),
+    do: stale_reasons(widgets, ~w(review evidence))
+
+  defp condition(:evidence, _task, widgets),
+    do: evidence_problems(widgets) ++ stale_reasons(widgets, ~w(review evidence))
+
+  defp condition(:quiz_answered, %Task{quiz_skipped: true}, _widgets), do: []
+
+  defp condition(:quiz_answered, _task, widgets) do
+    for w <- widgets,
+        w.section == "quiz" and w.kind == "quiz",
+        open = Catalog.quiz_unanswered(w.data, w.human),
+        open != [] do
+      "quiz W#{w.id}: #{Enum.join(open, ", ")} not answered (or the human skips the quiz)"
+    end
+  end
+
+  defp stale_reasons(widgets, sections) do
+    for w <- widgets, w.section in sections, stale = w.human["stale"] do
+      "#{TaskType.section_label(:feature, w.section)} W#{w.id} is out of date (#{stale["because"]}); produce it again"
+    end
+  end
+
+  # Evidence is the agent's report: Jarvis checks what it says, it runs nothing.
+  defp evidence_problems(widgets) do
+    evidence = widgets |> Enum.filter(&(&1.kind == "evidence")) |> List.last()
+    reviewed? = Enum.any?(widgets, &(&1.section == "review" and &1.kind == "findings"))
+    review = if reviewed?, do: [], else: ["the review report is missing"]
+
+    case evidence do
+      nil ->
+        ["evidence is missing" | review]
+
+      %{data: d} ->
+        rows = Enum.group_by(d["requirements"] || [], & &1["requirement"])
+
+        per_requirement =
+          for %{kind: "requirement", data: %{"id" => id}} <- widgets,
+              problem =
+                (case rows[id] do
+                   nil ->
+                     "#{id} has no test"
+
+                   list ->
+                     if Enum.all?(list, &(&1["result"] == "passed")),
+                       do: nil,
+                       else: "#{id}'s test failed"
+                 end),
+              problem != nil,
+              do: problem
+
+        check = if d["result"] == "passed", do: [], else: ["the check failed"]
+        check ++ per_requirement ++ review
+    end
+  end
+
+  @doc """
+  The human skips the quiz of a PR review in Quiz: `findings ready` no longer
+  waits for answers, and the turn goes to the agent.
+  """
+  def skip_quiz(%Scope{} = scope, %Task{type: :pr_review, step: "quiz"} = task) do
+    task = Repo.preload(task, :goal)
+
+    Repo.transact(fn ->
+      updated = task |> Ecto.Changeset.change(quiz_skipped: true, turn: :agent) |> Repo.update!()
+
+      Repo.insert!(%Comment{
+        goal_id: task.goal_id,
+        task_id: task.id,
+        author: :human,
+        body: "",
+        transition: "skip quiz",
+        to_step: task.step,
+        deliver: true
+      })
+
+      record!(scope, task.goal, task, "#{ref(task)}: skipped the quiz")
+      {:ok, updated}
+    end)
+    |> notify(scope)
+  end
+
+  def skip_quiz(_scope, _task), do: {:error, :not_in_quiz}
+
+  @doc """
+  Saves the human's own view of a pull request (one concern per line) or skips
+  it (`text` nil). Saving delivers the view to the listening session.
+  """
+  def save_picture(%Scope{} = scope, %Task{type: :pr_review} = task, text) do
+    task = Repo.preload(task, :goal)
+
+    picture =
+      case text do
+        nil ->
+          Map.put(task.picture || %{}, "state", "skipped")
+
+        text ->
+          concerns =
+            text
+            |> String.split("\n")
+            |> Enum.map(&String.trim/1)
+            |> Enum.reject(&(&1 == ""))
+            |> Enum.with_index(1)
+            |> Enum.map(fn {t, i} -> %{"id" => "c#{i}", "text" => t} end)
+
+          %{"state" => "saved", "text" => text, "concerns" => concerns}
+      end
+
+    if text != nil and picture["concerns"] == [] do
+      {:error, :empty}
+    else
+      Repo.transact(fn ->
+        updated = task |> Ecto.Changeset.change(picture: picture) |> Repo.update!()
+
+        if text != nil do
+          lines = Enum.map_join(picture["concerns"], "\n", &"- #{&1["id"]}: #{&1["text"]}")
+          again = if (task.picture || %{})["state"] == "saved", do: " (changed)", else: ""
+
+          Repo.insert!(%Comment{
+            goal_id: task.goal_id,
+            task_id: task.id,
+            author: :human,
+            body:
+              "My view of the pull request#{again}, written before seeing your findings:\n\n#{lines}\n\n" <>
+                "Compare it with your findings and record the matches as a view_matches widget in the picture section. Never change my concerns.",
+            deliver: true
+          })
+        end
+
+        record!(
+          scope,
+          task.goal,
+          task,
+          "#{ref(task)}: #{if text, do: "saved", else: "skipped"} your view"
+        )
+
+        {:ok, updated}
+      end)
+      |> notify(scope)
+    end
+  end
+
+  @doc "True while the first-round findings of a PR review wait for the human's view."
+  def picture_pending?(%Task{type: :pr_review, picture: picture}),
+    do: (picture || %{})["state"] not in ~w(saved skipped not_asked)
+
+  def picture_pending?(_task), do: false
 
   defp put_claim(changeset, scope, attrs) do
     case claim(attrs) do
@@ -366,16 +700,29 @@ defmodule Jarvis.Planning do
   nothing. Each op is a map with `op`:
 
   - `add`: `section`, `kind`, `data`, optional `position` (1-based; default last)
-  - `update`: `id`, `data` (replaces the data)
+  - `update`: `id`, `data` (replaces the data; clears an out-of-date mark)
   - `move`: `id`, `position`, optional `section`
   - `delete`: `id`
   - `judge`: `id` (a quiz), `question`, `correct`, `explanation`
 
+  An agent writes a task's sections only while its step owns them. A changed
+  requirement makes the task's evidence and review out of date; a round with
+  a new head makes a PR review's quiz and findings out of date. `meta` takes
+  the agent's `reason` and `needs` for its turn report.
+
   Returns `{:ok, ids}` with the widget id each op touched, or
   `{:error, {:widgets, messages}}` naming the failing op and its fields.
   """
-  def apply_widget_ops(%Scope{} = scope, %Goal{} = goal, task, ops) when is_list(ops) do
-    ctx = %{scope: scope, goal: goal, task: task, sections: sections_of(task)}
+  def apply_widget_ops(scope, goal, task, ops, meta \\ %{})
+
+  def apply_widget_ops(%Scope{} = scope, %Goal{} = goal, task, ops, meta) when is_list(ops) do
+    ctx = %{
+      scope: scope,
+      goal: goal,
+      task: task,
+      sections: sections_of(task),
+      reason: meta |> get(:reason) |> blank_to_nil()
+    }
 
     Repo.transact(fn ->
       ops
@@ -396,6 +743,9 @@ defmodule Jarvis.Planning do
             record!(scope, goal, task, "#{ref(task || goal)}: #{length(ids)} widget change(s)")
           end
 
+          if needs = meta |> get(:needs) |> blank_to_nil(),
+            do: put_needs!(scope, goal, task, needs)
+
           if task, do: Workspaces.focus(scope, task.id)
           {:ok, Enum.reverse(ids)}
 
@@ -406,16 +756,20 @@ defmodule Jarvis.Planning do
     |> notify(scope)
   end
 
-  def apply_widget_ops(_scope, _goal, _task, _ops),
+  def apply_widget_ops(_scope, _goal, _task, _ops, _meta),
     do: {:error, {:widgets, ["ops: must be a list of operations"]}}
+
+  defp blank_to_nil(value), do: if(blank?(value), do: nil, else: String.trim(to_string(value)))
 
   defp sections_of(nil), do: TaskType.sections(:goal)
   defp sections_of(%Task{type: type}), do: TaskType.sections(type)
 
   defp apply_op(ctx, %{"op" => "add"} = op) do
     with {:ok, section} <- resolve_section(ctx.sections, op["section"]),
+         :ok <- check_owned(ctx, section),
          {:ok, kind} <- resolve_kind(op["kind"]),
-         {:ok, data} <- Catalog.validate(kind, op["data"] || %{}) do
+         {:ok, data} <- Catalog.validate(kind, op["data"] || %{}),
+         :ok <- check_against_task(ctx, kind, data) do
       widget =
         Repo.insert!(%Widget{
           project_id: ctx.goal.project_id,
@@ -429,52 +783,333 @@ defmodule Jarvis.Planning do
         })
 
       place!(ctx, widget, section, op["position"])
+      change_report!(ctx, "added", nil, widget)
+      cascade!(ctx, nil, widget)
       {:ok, widget.id}
     end
   end
 
   defp apply_op(ctx, %{"op" => "update"} = op) do
     with {:ok, widget} <- owned_widget(ctx, op["id"]),
-         {:ok, data} <- Catalog.validate(widget.kind, op["data"] || %{}) do
-      human = Catalog.reconcile(widget.kind, widget.data, data, widget.human)
-      widget |> Ecto.Changeset.change(data: data, human: human) |> Repo.update!()
+         :ok <- check_owned(ctx, widget.section),
+         {:ok, data} <- Catalog.validate(widget.kind, op["data"] || %{}),
+         :ok <- check_against_task(ctx, widget.kind, data) do
+      human =
+        widget.kind
+        |> Catalog.reconcile(widget.data, data, widget.human)
+        |> Map.delete("stale")
+
+      updated = widget |> Ecto.Changeset.change(data: data, human: human) |> Repo.update!()
       note_update!(ctx, widget)
+      if data != widget.data, do: change_report!(ctx, "updated", widget, updated)
+      if data != widget.data, do: cascade!(ctx, widget, updated)
       {:ok, widget.id}
     end
   end
 
   defp apply_op(ctx, %{"op" => "move"} = op) do
     with {:ok, widget} <- owned_widget(ctx, op["id"]),
-         {:ok, section} <- resolve_section(ctx.sections, op["section"] || widget.section) do
+         :ok <- check_owned(ctx, widget.section),
+         {:ok, section} <- resolve_section(ctx.sections, op["section"] || widget.section),
+         :ok <- check_owned(ctx, section) do
       old_section = widget.section
-      widget = widget |> Ecto.Changeset.change(section: section) |> Repo.update!()
+      moved = widget |> Ecto.Changeset.change(section: section) |> Repo.update!()
       if old_section != section, do: renumber!(ctx, old_section, nil)
-      place!(ctx, widget, section, op["position"])
-      note_update!(ctx, widget)
+      place!(ctx, moved, section, op["position"])
+      note_update!(ctx, moved)
+      if old_section != section, do: change_report!(ctx, "moved", widget, moved)
       {:ok, widget.id}
     end
   end
 
   defp apply_op(ctx, %{"op" => "delete"} = op) do
-    with {:ok, widget} <- owned_widget(ctx, op["id"]) do
+    with {:ok, widget} <- owned_widget(ctx, op["id"]),
+         :ok <- check_owned(ctx, widget.section) do
       Repo.delete!(widget)
       renumber!(ctx, widget.section, nil)
+      change_report!(ctx, "deleted", widget, nil)
+      cascade!(ctx, widget, nil)
       {:ok, widget.id}
     end
   end
 
   defp apply_op(ctx, %{"op" => "judge"} = op) do
     with {:ok, widget} <- owned_widget(ctx, op["id"]),
+         :ok <- check_owned(ctx, widget.section),
          {:ok, human} <-
            wrap_error(
              Catalog.judge(widget, to_string(op["question"]), op["correct"], op["explanation"])
            ) do
-      widget |> Ecto.Changeset.change(human: human) |> Repo.update!()
+      widget = widget |> Ecto.Changeset.change(human: human) |> Repo.update!()
+
+      if op["correct"] == false,
+        do: stale_explained!(ctx.scope, widget, to_string(op["question"]))
+
       {:ok, widget.id}
     end
   end
 
   defp apply_op(_ctx, _op), do: {:error, "op must be add, update, move, delete, or judge"}
+
+  # Each step owns the sections an agent may write in it; the human is never limited.
+  defp check_owned(%{task: nil}, _section), do: :ok
+
+  defp check_owned(%{scope: scope, task: task}, section) do
+    if not Scope.agent?(scope) or section in TaskType.owned_sections(task.type, task.step) do
+      :ok
+    else
+      owners =
+        case TaskType.owning_steps(task.type, section) do
+          [] -> "no step"
+          steps -> Enum.map_join(steps, ", ", &TaskType.step_label(task.type, &1))
+        end
+
+      {:error,
+       [
+         "section #{section}: the step #{TaskType.step_label(task.type, task.step)} does not let an agent write it; steps that do: #{owners}"
+       ]}
+    end
+  end
+
+  # Evidence rows must name the task's own requirement cards.
+  defp check_against_task(%{task: %Task{} = task}, "evidence", data) do
+    known =
+      for %{kind: "requirement", data: %{"id" => id}} <- task_widgets(task),
+          into: MapSet.new(),
+          do: id
+
+    errors =
+      for {row, i} <- Enum.with_index(data["requirements"] || [], 1),
+          not MapSet.member?(known, row["requirement"]) do
+        "requirements[#{i}].requirement: no requirement card #{row["requirement"]} on this task"
+      end
+
+    if errors == [], do: :ok, else: {:error, errors}
+  end
+
+  defp check_against_task(_ctx, _kind, _data), do: :ok
+
+  ## Out of date
+
+  # What a change upstream makes out of date in the same task.
+  defp cascade!(%{task: %Task{} = task} = ctx, before, after_) do
+    widget = after_ || before
+
+    cond do
+      widget.kind == "requirement" ->
+        id = (after_ || before).data["id"]
+        targets = Enum.filter(task_widgets(task), &(&1.section in ~w(review evidence)))
+        mark_stale!(ctx.scope, ctx.goal, task, targets, "#{id} changed", widget)
+
+      widget.kind == "round" and after_ != nil and before == nil and
+          after_.data["head"] != after_.data["previous_head"] ->
+        targets =
+          Enum.filter(
+            task_widgets(task),
+            &((&1.section == "quiz" and &1.kind == "quiz") or
+                (&1.section == "findings" and &1.kind == "findings"))
+          )
+
+        mark_stale!(
+          ctx.scope,
+          ctx.goal,
+          task,
+          targets,
+          "new head #{after_.data["head"]} in round #{after_.data["number"]}",
+          widget
+        )
+
+      true ->
+        :ok
+    end
+  end
+
+  defp cascade!(_ctx, _before, _after), do: :ok
+
+  defp mark_stale!(scope, goal, task, widgets, because, source) do
+    for w <- widgets do
+      stale = %{
+        "because" => because,
+        "source" => source && source.id,
+        "section" => source && source.section
+      }
+
+      w |> Ecto.Changeset.change(human: Map.put(w.human, "stale", stale)) |> Repo.update!()
+
+      report!(scope, goal, task, %{
+        "action" => "stale",
+        "widget" => w.id,
+        "kind" => w.kind,
+        "section" => w.section,
+        "because" => because
+      })
+    end
+
+    :ok
+  end
+
+  # A wrong answer to a Learn check question makes the explanation it tests out of date.
+  defp stale_explained!(scope, %Widget{kind: "quiz", task_id: task_id} = quiz, qid)
+       when not is_nil(task_id) do
+    task = Repo.get!(Task, task_id) |> Repo.preload(:goal)
+    question = Enum.find(quiz.data["questions"], &(&1["id"] == qid))
+
+    with :learn <- task.type,
+         %{"explains" => ref} when is_binary(ref) <- question,
+         id when is_integer(id) <- to_int(ref),
+         %Widget{} = target <-
+           Repo.one(from w in owner_widgets(task.goal_id, task), where: w.id == ^id) do
+      mark_stale!(scope, task.goal, task, [target], "wrong answer to #{qid}", quiz)
+    else
+      _ -> :ok
+    end
+  end
+
+  defp stale_explained!(_scope, _widget, _qid), do: :ok
+
+  ## Turn reports
+
+  @doc """
+  The turn reports of a goal (task `nil`) or task whose turn has ended:
+  `{unread, read}`, each newest first.
+  """
+  def list_reports(%Goal{} = goal, task) do
+    query =
+      from r in Report,
+        where: r.goal_id == ^goal.id and not is_nil(r.closed_at),
+        order_by: [desc: r.id],
+        preload: [:agent_session]
+
+    query =
+      case task do
+        nil -> from r in query, where: is_nil(r.task_id)
+        %Task{id: id} -> from r in query, where: r.task_id == ^id
+      end
+
+    query |> Repo.all() |> Enum.split_with(&is_nil(&1.read_at))
+  end
+
+  @doc "The human has read the turn report: it moves to the history."
+  def read_report(%Scope{project: project} = scope, id) do
+    case Repo.one(from r in Report, where: r.id == ^to_int(id) and r.project_id == ^project.id) do
+      nil ->
+        {:error, :not_found}
+
+      report ->
+        report
+        |> Ecto.Changeset.change(read_at: DateTime.utc_now())
+        |> Repo.update()
+        |> notify(scope)
+    end
+  end
+
+  defp change_report!(ctx, action, before, after_) do
+    widget = after_ || before
+
+    report!(ctx.scope, ctx.goal, ctx.task, %{
+      "action" => action,
+      "widget" => widget.id,
+      "kind" => widget.kind,
+      "section" => widget.section,
+      "from_section" => before && before.section,
+      "before" => before && before.data,
+      "after" => after_ && after_.data,
+      "reasons" => List.wrap(ctx.reason)
+    })
+  end
+
+  defp put_needs!(scope, goal, task, needs) do
+    case scope.agent_session do
+      nil -> :ok
+      _ -> report!(scope, goal, task, nil, needs)
+    end
+  end
+
+  # Adds the entry to the session's report for this turn and owner, merging
+  # repeated changes of one widget into one entry.
+  defp report!(scope, goal, task, entry, needs \\ nil)
+  defp report!(%Scope{agent_session: nil}, _goal, _task, _entry, _needs), do: :ok
+
+  defp report!(
+         %Scope{agent_session: %{id: session_id}, project: project},
+         goal,
+         task,
+         entry,
+         needs
+       ) do
+    session = Repo.get!(AgentSession, session_id)
+    task_id = task && task.id
+    goal_id = (goal && goal.id) || (task && task.goal_id)
+
+    report =
+      Repo.one(
+        from r in Report,
+          where:
+            r.agent_session_id == ^session.id and r.turn == ^session.turn and
+              r.goal_id == ^goal_id and is_nil(r.read_at),
+          where:
+            ^if(task_id,
+              do: dynamic([r], r.task_id == ^task_id),
+              else: dynamic([r], is_nil(r.task_id))
+            ),
+          order_by: [desc: r.id],
+          limit: 1
+      ) ||
+        Repo.insert!(%Report{
+          project_id: project.id,
+          goal_id: goal_id,
+          task_id: task_id,
+          agent_session_id: session.id,
+          turn: session.turn,
+          entries: %{"items" => []}
+        })
+
+    items = if entry, do: merge_entry(Report.items(report), entry), else: Report.items(report)
+
+    working? =
+      Repo.one(from s in AgentSession, where: s.id == ^session.id, select: s.state) == :working
+
+    report
+    |> Ecto.Changeset.change(
+      entries: %{"items" => items},
+      needs: needs || report.needs,
+      closed_at: if(working?, do: nil, else: report.closed_at || DateTime.utc_now())
+    )
+    |> Repo.update!()
+
+    :ok
+  end
+
+  defp merge_entry(items, %{"widget" => id, "action" => action} = entry)
+       when action in ~w(added updated moved deleted) do
+    case Enum.find_index(items, &(&1["widget"] == id and &1["action"] in ~w(added updated moved))) do
+      nil ->
+        items ++ [entry]
+
+      i ->
+        old = Enum.at(items, i)
+
+        merged =
+          case {old["action"], action} do
+            {"added", "deleted"} -> nil
+            {"added", _} -> %{entry | "action" => "added", "before" => nil}
+            {_, _} -> %{entry | "before" => old["before"], "from_section" => old["from_section"]}
+          end
+
+        merged =
+          merged && Map.put(merged, "reasons", Enum.uniq(old["reasons"] ++ entry["reasons"]))
+
+        if merged, do: List.replace_at(items, i, merged), else: List.delete_at(items, i)
+    end
+  end
+
+  defp merge_entry(items, %{"widget" => id, "action" => "stale"} = entry) do
+    if Enum.any?(items, &(&1["widget"] == id and &1["action"] == "stale")),
+      do: items,
+      else: items ++ [entry]
+  end
+
+  defp merge_entry(items, entry), do: items ++ [entry]
 
   defp wrap_error({:error, message}), do: {:error, [message]}
   defp wrap_error(ok), do: ok
@@ -618,11 +1253,37 @@ defmodule Jarvis.Planning do
           )
         end
 
+        if action == "answer" do
+          answer = get_in(widget.human, ["answers", params["question"]])
+
+          if answer && answer["correct"] == false,
+            do: stale_explained!(scope, widget, params["question"])
+
+          quiz_answered!(widget)
+        end
+
         {:ok, widget}
       end)
       |> notify(scope)
     end
   end
+
+  # Answering every question of a PR review's quiz gives the turn to the agent.
+  defp quiz_answered!(%Widget{section: "quiz", task_id: task_id}) when not is_nil(task_id) do
+    task = Repo.get!(Task, task_id)
+
+    if task.type == :pr_review and task.step == "quiz" and turn(task) == :human do
+      quizzes = Enum.filter(task_widgets(task), &(&1.section == "quiz" and &1.kind == "quiz"))
+
+      if quizzes != [] and Enum.all?(quizzes, &(Catalog.quiz_unanswered(&1.data, &1.human) == [])) do
+        task |> Ecto.Changeset.change(turn: :agent) |> Repo.update!()
+      end
+    end
+
+    :ok
+  end
+
+  defp quiz_answered!(_widget), do: :ok
 
   ## Comments
 
@@ -760,6 +1421,9 @@ defmodule Jarvis.Planning do
          %Comment{anchor_label: label} when not is_nil(label) ->
            false
 
+         %Comment{deliver: true} ->
+           false
+
          %Comment{task: nil} ->
            true
 
@@ -858,10 +1522,18 @@ defmodule Jarvis.Planning do
   defp actor(scope), do: if(Scope.agent?(scope), do: :agent, else: :human)
 
   # One readable line for the feed, e.g. "moved Design → Implementation; claimed".
-  defp describe(%Ecto.Changeset{changes: changes, data: data}) do
+  defp describe(%Ecto.Changeset{changes: changes, data: data}, move) do
     step =
-      changes[:step] &&
-        "moved #{TaskType.step_label(data.type, data.step)} → #{TaskType.step_label(data.type, changes.step)}"
+      case {changes[:step], move} do
+        {nil, {:transition, t}} ->
+          t.name
+
+        {nil, _} ->
+          nil
+
+        {to, _} ->
+          "moved #{TaskType.step_label(data.type, data.step)} → #{TaskType.step_label(data.type, to)}"
+      end
 
     claim =
       case Map.fetch(changes, :worktree_id) do
@@ -870,9 +1542,10 @@ defmodule Jarvis.Planning do
         :error -> nil
       end
 
+    handoff = changes[:turn] == :human && move == nil && "handed over to you"
     title = changes[:title] && "renamed"
 
-    case Enum.reject([step, claim, title], &is_nil/1) do
+    case Enum.reject([step, claim, handoff, title], &(&1 in [nil, false])) do
       [] -> nil
       parts -> Enum.join(parts, "; ")
     end

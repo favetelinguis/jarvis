@@ -21,8 +21,13 @@ defmodule JarvisWeb.WidgetEvents do
 
   def handle("widget:cancel", _params, socket), do: {:noreply, assign(socket, :composer, nil)}
 
-  def handle("widget:seen", %{"widget" => id}, socket),
-    do: {:noreply, assign(socket, :changed, MapSet.delete(socket.assigns.changed, to_int(id)))}
+  def handle("widget:seen", %{"widget" => id}, socket) do
+    id = to_int(id)
+    seen = socket.assigns |> Map.get(:seen, MapSet.new()) |> MapSet.put(id)
+
+    {:noreply,
+     socket |> assign(:changed, MapSet.delete(socket.assigns.changed, id)) |> assign(:seen, seen)}
+  end
 
   def handle(
         "widget:comment",
@@ -96,6 +101,18 @@ defmodule JarvisWeb.WidgetEvents do
       end
 
     socket |> assign(:widgets, widgets) |> assign(:changed, changed)
+  end
+
+  @doc """
+  The widgets to mark as changed: those changed since the page loaded, and
+  those an unread turn report changed, except the ones the human marked read.
+  """
+  def changed(assigns, reports) do
+    reports
+    |> Enum.flat_map(&Jarvis.Planning.Report.widget_ids/1)
+    |> MapSet.new()
+    |> MapSet.difference(Map.get(assigns, :seen, MapSet.new()))
+    |> MapSet.union(assigns.changed)
   end
 
   defp effective(widget, current, criterion) do

@@ -7,7 +7,7 @@ Jarvis is a live task board that coding agents (pi, Codex, GitHub Copilot CLI) a
 - **Board.** Agents write goals and tasks through tools, and you watch them change live in the browser. Every task has a **type** (Feature, Research, PR review, Learn) with its own **lifecycle**, drawn as a graph.
 - **Widgets.** Goal and task pages are built from visual, interactive widgets (requirement cards, examples you explore, diagrams, architecture tours, comparisons, quizzes, code walkthroughs, review findings) instead of markdown. See the **Design system** page for all of them, playable.
 - **Comment on anything.** You can comment on any widget or any part of one. The agent session working on the task receives your comment at its next turn and either updates that widget live or answers in the thread. All sessions, worktrees, and branches of a repository share one board, so a `/design` session in one worktree and an `/impl` session in another work from the same tasks.
-- **Two-way.** You can move a task, release a worktree's claim, or comment from the browser. Comments reach the agents concerned at the start of their next turn in all three harnesses; idle sessions are never woken.
+- **Two-way.** You can move a task, release a worktree's claim, or comment from the browser. Every decision that is yours is a button no agent can press, and the board always shows whose turn it is. Comments reach the agents concerned at the start of their next turn in all three harnesses; idle sessions are never woken.
 - **Presence.** Every pi, Codex, and Copilot CLI session reports whether it is *working* or *waiting for you*, which worktree it runs in, and which task it focuses on.
 
 Built with Elixir, Phoenix LiveView, and Ecto, on SQLite.
@@ -73,10 +73,10 @@ Workflows are skills that start only when you name them: `/skill:specify` in pi,
 
 | Tool | What it does |
 | --- | --- |
-| `jarvis_read` | No arguments: the board (goals, tasks with type and step, live sessions). `goal`: a whole goal with its widgets. `goal` + `task`: type, step, the transitions out of it and who moves each, every widget with ids and part ids, comments. |
+| `jarvis_read` | No arguments: the board (goals, tasks with type and step, live sessions). `goal`: a whole goal with its widgets. `goal` + `task`: type, step, whose turn it is, the sections the agent may write in the step, the transitions out of it and who moves each, every widget with ids and part ids, comments. |
 | `jarvis_goal_save` | Creates a goal (without `goal`) or renames one. |
-| `jarvis_task_save` | Creates a task (`title`, `type`: `feature`/`research`/`pr_review`/`learn`) or updates one: `title`, `claim`, `transition` (move along a named transition), `force_step` (jump, for POC runs). |
-| `jarvis_widgets` | Adds, updates, moves, deletes widgets in the sections of a goal or task, all ops of a call or none; `judge` records a verdict on a human's free-text quiz answer. |
+| `jarvis_task_save` | Creates a task (`title`, `type`: `feature`/`research`/`pr_review`/`learn`) or updates one: `title`, `claim`, `transition` (move along a named agent transition; the human's are refused), `handoff` (give the turn to the human inside the step), `force_step` (jump; POC goals only), `reason` and `needs` (for the turn report). |
+| `jarvis_widgets` | Adds, updates, moves, deletes widgets in the sections of a goal or task, all ops of a call or none; in a task only the sections its step owns. `judge` records a verdict on a human's free-text quiz answer. `reason` and `needs` go into the turn report. |
 | `jarvis_catalog` | Every widget kind with its fields, parts, and an example; the sections of each type with recommended widgets. |
 | `jarvis_comment` | Leaves a note on a goal or task; `reply_to` answers a comment on a widget, `widget`/`part` start a thread on one. |
 
@@ -101,15 +101,15 @@ All three harnesses use the same six MCP tool definitions. Tool calls carry the 
 | Page | Shows |
 | --- | --- |
 | `/` | Projects with task counts and live sessions |
-| `/projects/:id` | Goals and matching tasks with All, Unfinished, per-type, and per-step filters; type, step, claim, and focus dots. Live sessions, activity feed |
-| `.../goals/:n` | The goal's sections as widgets, its tasks, notes on the goal |
-| `.../goals/:n/tasks/:m` | Where you are and what can happen next, the lifecycle graph and the moves out of the current step (each confirmed before it happens), a contents list of the sections with one section shown at a time as widgets you can comment on, who is listening, release claim, conversation with the agents |
+| `/projects/:id` | Goals and matching tasks with All, Unfinished, Your turn, per-type, and per-step filters; type, step, whose turn, claim, and focus dots. Live sessions, activity feed |
+| `.../goals/:n` | Turn reports of the goal, the goal's sections as widgets, its tasks with whose turn, notes on the goal |
+| `.../goals/:n/tasks/:m` | Whose turn it is and what is expected (your open decisions and what they lack, or the agent's command and worktree; the review and evidence at your gate), unread turn reports and the history of turns, where you are and what can happen next, the lifecycle graph and the moves out of the current step (each confirmed before it happens; sending work back needs a comment), a contents list of the sections with one section shown at a time as widgets you can comment on, who is listening, release claim, conversation with the agents |
 | `/docs` | The four kinds of documentation (tutorial, how-to, reference, explanation), each with its page; `/docs/tutorial` walks a first comment loop |
 | `/guide` | How the workflows are used: concepts, claims and sessions, each task type's lifecycle with its transitions and an example flow, other workflows |
 | `/design-system` | Every widget kind with example data, the lifecycle graphs, and the theme, all playable in memory with a simulated agent |
 | `/settings` | Display settings kept in your browser (text size, line spacing, color theme including high contrast, motion, density), board language, the brand colors (primary, secondary, accent): live preview, contrast table, save, reset, and integrations (install Jarvis into pi, Codex, Copilot CLI) |
 
-The project-board filter starts at **All** on each visit. **Unfinished** hides tasks in Done; choosing a type offers that type's steps. Goals without matching tasks are hidden, but each visible goal’s progress still includes all its tasks. Filter selection stays in place during live updates; reload or return to the board to reset it.
+The project-board filter starts at **All** on each visit. **Unfinished** hides tasks in Done; **Your turn** shows only tasks waiting for your decision; choosing a type offers that type's steps. Goals without matching tasks are hidden, but each visible goal’s progress still includes all its tasks. Filter selection stays in place during live updates; reload or return to the board to reset it.
 
 ### Theme
 
@@ -132,11 +132,11 @@ Endpoints (`/api` prefix):
 | --- | --- | --- |
 | GET | `/overview` | Board as markdown |
 | POST/GET/PATCH | `/goals`, `/goals/:n` | Create, read, update a goal |
-| POST/GET/PATCH | `/goals/:n/tasks`, `/goals/:n/tasks/:m` | Create, read, update a task (`type`, `transition`, `force_step`, `claim`) |
-| POST | `/goals/:n/widgets`, `/goals/:n/tasks/:m/widgets` | Apply widget operations (`ops`), all or nothing |
+| POST/GET/PATCH | `/goals/:n/tasks`, `/goals/:n/tasks/:m` | Create, read, update a task (`type`, `transition`, `handoff`, `force_step`, `claim`, `reason`, `needs`) |
+| POST | `/goals/:n/widgets`, `/goals/:n/tasks/:m/widgets` | Apply widget operations (`ops`, with `reason`, `needs`), all or nothing |
 | GET | `/catalog` | The widget catalog as markdown |
 | POST | `/goals/:n/comments` | Comment on a goal, or on a task with `task`; `widget`, `part`, `reply_to` for threads |
-| POST | `/wake` | The anchored comments this session must hear now (marks them delivered) |
+| POST | `/wake` | The anchored comments and the human's moves this session must hear now (marks them delivered) |
 | PUT | `/session` | `{"state": "idle" \| "working" \| "ended"}` |
 | POST | `/inbox` | The human's plain comments this session has not seen yet (marks them seen) |
 

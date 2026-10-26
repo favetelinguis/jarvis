@@ -16,7 +16,7 @@ Goals and tasks live in Jarvis (`jarvis_read`, `jarvis_task_save`, `jarvis_widge
 
 - If the input is a goal, read it with `jarvis_read` and work through **all** its tasks in order, in this worktree. If it is a description, create the goal and one task per vertical slice first (`jarvis_goal_save`, `jarvis_task_save`, with requirement cards in `jarvis_widgets`), then work through them.
 - Mark the goal as POC with `jarvis_goal_save` `poc: true` before you start. Only the human can clear it; never try to.
-- Claim each task (`claim: true`). Move it through its lifecycle as you go with `jarvis_task_save` `force_step` (this is the POC override: it ignores the human-only transitions): Design when you start it, Implementation while you code, Review when it works, Done when the check passes. The board then shows where you are.
+- Claim each task (`claim: true`). Move it through its lifecycle as you go with `jarvis_task_save` `force_step` (this is the POC override: it ignores the human-only transitions): Design when you start it, Implementation while you code, Acceptance when it works, Done when the check passes. The board then shows where you are.
 - Leave a `jarvis_comment` on each task when it is done: what you built, what you left out, what to look at.
 
 ## Build

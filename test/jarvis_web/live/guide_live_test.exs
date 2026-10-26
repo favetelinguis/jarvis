@@ -47,10 +47,11 @@ defmodule JarvisWeb.GuideLiveTest do
   end
 
   describe "concepts" do
-    test "Concepts explains each of the nine terms", %{conn: conn} do
+    test "Concepts explains each term", %{conn: conn} do
       view = open(conn)
 
-      for term <- ~w(goal task task-type step transition mover claim worktree session) do
+      for term <-
+            ~w(goal task task-type step transition mover turn handoff turn-report out-of-date evidence claim worktree session) do
         assert has_element?(view, "#concepts #concept-#{term}"), "no concept #{term}"
       end
     end
@@ -92,7 +93,7 @@ defmodule JarvisWeb.GuideLiveTest do
 
     test "impl and impl-review work only on tasks their worktree claimed", %{conn: conn} do
       view = open(conn)
-      assert has_element?(view, "#claim-impl", "Implementation or Review")
+      assert has_element?(view, "#claim-impl", "Implementation or Acceptance")
       assert has_element?(view, "#claim-impl", "impl and impl-review work only on tasks")
     end
 
@@ -135,7 +136,7 @@ defmodule JarvisWeb.GuideLiveTest do
 
         order = type |> TaskType.steps() |> Enum.map(&elem(&1, 0))
         index = &Enum.find_index(order, fn key -> key == &1 end)
-        back = Enum.count(TaskType.transitions(type), &(index.(&1.to) < index.(&1.from)))
+        back = Enum.count(TaskType.transitions(type), &(index.(&1.to) <= index.(&1.from)))
         assert Enum.count(nodes(view, "##{a} svg path[stroke-dasharray]")) == back
 
         for t <- TaskType.transitions(type) do
@@ -160,9 +161,9 @@ defmodule JarvisWeb.GuideLiveTest do
 
     test "an agent's transition names the workflow that makes it", %{conn: conn} do
       view = open(conn)
-      card = "#feature-transition-request-changes"
-      assert has_element?(view, card, "impl-review")
-      refute has_element?(view, card, "/impl-review")
+      card = "#feature-transition-implemented"
+      assert has_element?(view, card, "impl moves it")
+      refute has_element?(view, card, "/impl")
 
       for type <- TaskType.keys(), %{mover: :agent} = t <- TaskType.transitions(type) do
         workflow = String.trim_leading(t.command, "/")
@@ -281,7 +282,7 @@ defmodule JarvisWeb.GuideLiveTest do
 
       assert "request changes" in moves
       after_back = Enum.drop_while(moves, &(&1 != "request changes"))
-      assert "approve" in after_back
+      assert "accept" in after_back
     end
 
     test "every prompt is a workflow name and its input, without harness syntax", %{conn: conn} do

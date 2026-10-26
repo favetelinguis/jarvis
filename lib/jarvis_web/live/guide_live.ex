@@ -39,7 +39,17 @@ defmodule JarvisWeb.GuideLive do
     {"transition", "Transition",
      "A named move from one step to another, forward or back, such as *approve requirements* or *request changes*. Some have a condition that must hold first."},
     {"mover", "Mover",
-     "Who makes a transition: you, with a button on the task page, or the agent, in the workflow that works the step. An agent never makes your move, except in `poc`."},
+     "Who makes a transition: you, with a button on the task page, or the agent, in the workflow that works the step. No agent can make your move, even when you ask in the chat."},
+    {"turn", "Whose turn",
+     "Who acts next in a task: **your turn** (a decision on the task page), the **agent's turn** (a named command in a named worktree), or nobody's. The task page and the board always show it."},
+    {"handoff", "Handoff",
+     "An agent gives the turn to you inside a step, without leaving it. Only then is your decision due, for example after `design` hands Design over."},
+    {"turn-report", "Turn report",
+     "What one agent turn changed on the board: each widget before and after, the agent's reason, and what it needs from you."},
+    {"out-of-date", "Out of date",
+     "Something built on a part that changed since, such as evidence after a requirement was reworded. It is marked until the agent writes it again."},
+    {"evidence", "Evidence",
+     "What an agent records before it hands a Feature to you: the check command and result, each requirement with its test, and a review report."},
     {"claim", "Claim",
      "A worktree's hold on a Feature task, shown as the task's **Worktree** line. Only the claiming worktree builds and reviews the task."},
     {"worktree", "Worktree",
@@ -53,10 +63,22 @@ defmodule JarvisWeb.GuideLive do
      "No release needed: the new session carries on with the task."},
     {"claim-design", "Feature", "Another worktree", "Design",
      "`design` there claims the task and replaces the old claim."},
-    {"claim-impl", "Feature", "Another worktree", "Implementation or Review",
+    {"claim-impl", "Feature", "Another worktree", "Implementation or Acceptance",
      "`impl` and `impl-review` work only on tasks their worktree claimed, so they do not take it up there."},
     {"claim-unclaimed", "Research, PR review, or Learn", "Anything", "Any",
      "There is no claim to release: these tasks are never claimed."}
+  ]
+
+  # Upstream changes and what they make out of date (see Planning's cascades).
+  @cascades [
+    {"cascade-requirement", "A requirement is reworded, added, or removed",
+     "Its confirmation is cleared; the task's evidence and review report",
+     "approve design, implemented, accept"},
+    {"cascade-head", "A re-review round finds a new head", "The quiz and the findings",
+     "Nothing"},
+    {"cascade-dig", "You choose dig deeper", "The recommendation", "Nothing"},
+    {"cascade-check", "You answer a Learn check question wrong",
+     "The explanation widget the question tests, if it names one", "Nothing"}
   ]
 
   @intros [
@@ -74,57 +96,55 @@ defmodule JarvisWeb.GuideLive do
     feature: [
       %{
         say: "specify add a live task board",
-        agent: "Interviews you, then writes the goal and its tasks, each requirement as a card.",
+        agent:
+          "Interviews you and writes the goal and its tasks, each requirement as a card. Then it hands over.",
         board: "Confirm each requirement card, or question it on the card.",
         move: "approve requirements"
       },
       %{
         say: "design",
-        agent: "Claims the task for this worktree and sketches it in the code with you.",
-        board: "Comment on the sketch where you want it changed.",
-        move: nil
+        agent:
+          "Claims the task and sketches it with you. A review in a fresh context checks it; then it hands over.",
+        board: "Read the review report, then write what the sketch should change.",
+        move: "request design changes"
       },
       %{
-        say: "design-review",
-        agent: "Reviews the sketch with you against the requirements.",
-        board: nil,
+        say: "design",
+        agent: "Reads your comment, amends the sketch, reviews it again, and hands Design over.",
+        board: "Read the turn report: each change with its reason.",
         move: "approve design"
       },
       %{
         say: "impl",
-        agent: "Writes the tests, builds the task, and runs the checks.",
+        agent:
+          "Writes the tests, builds the task, has it reviewed in a fresh context, and records the evidence.",
         board: nil,
         move: "implemented"
       },
       %{
-        say: "impl-review",
-        agent: "Finds a blocking problem and hands you a follow-up to paste.",
-        board: "Read the verdict in the task's comments.",
+        say: nil,
+        agent: "Waits for you.",
+        board: "Weigh the evidence and the review; write what is still wrong.",
         move: "request changes"
       },
       %{
-        say: "design <the follow-up>",
-        agent: "Amends the sketch in the same task; the fix belongs to the same pull request.",
-        board: nil,
-        move: nil
-      },
-      %{
         say: "impl",
-        agent: "Fixes the problem.",
+        agent: "Fixes what your comment names and records new evidence.",
         board: nil,
         move: "implemented"
       },
       %{
-        say: "impl-review",
-        agent: "Approves and leaves its verdict as a comment.",
-        board: nil,
-        move: "approve"
+        say: nil,
+        agent: "Waits for you.",
+        board: "Weigh the new evidence.",
+        move: "accept"
       }
     ],
     research: [
       %{
         say: "research which job queue fits our workload",
-        agent: "Writes the question and its context, and asks what the answer is for.",
+        agent:
+          "Writes the question and its context, and asks what the answer is for. Then it hands over.",
         board: "Check that the question is the one you want answered.",
         move: "approve question"
       },
@@ -137,12 +157,12 @@ defmodule JarvisWeb.GuideLive do
       %{
         say: nil,
         agent: "Waits for you.",
-        board: "Change the comparison's weights; the recommendation does not hold up.",
+        board: "Change the comparison's weights; write why the recommendation does not hold up.",
         move: "dig deeper"
       },
       %{
         say: "research Task 3.1",
-        agent: "Investigates further and revises the findings.",
+        agent: "Investigates further and rewrites the recommendation, which was out of date.",
         board: nil,
         move: "findings ready"
       },
@@ -162,20 +182,21 @@ defmodule JarvisWeb.GuideLive do
       },
       %{
         say: nil,
-        agent: "Explains the change: background, intuition, and a walkthrough of the code.",
+        agent:
+          "Explains the change: background, intuition, a walkthrough of the code, and a quiz. Then it hands over.",
         board: "Comment on any part you do not follow.",
-        move: "quiz ready"
+        move: "ready for the quiz"
       },
       %{
-        say: nil,
-        agent: "Writes a quiz on the change.",
-        board: "Answer the quiz.",
+        say: "pr-review Task 2.1",
+        agent: "Records findings with severity and suggested changes.",
+        board: "Answer the quiz first, or press Skip quiz.",
         move: "findings ready"
       },
       %{
-        say: nil,
-        agent: "Records findings with severity and suggested changes.",
-        board: "Mark each finding Agree, Disagree, or Fixed.",
+        say: "pr-review Task 2.1",
+        agent: "Matches your view against its findings.",
+        board: "Write your view, then mark each finding Agree, Disagree, or Fixed.",
         move: "give verdict"
       }
     ],
@@ -188,20 +209,21 @@ defmodule JarvisWeb.GuideLive do
       },
       %{
         say: nil,
-        agent: "Explains it with a diagram and a walkthrough of the code.",
+        agent:
+          "Explains it with a diagram and a walkthrough, writes the check quiz, and hands over.",
         board: "Comment on any part you do not follow.",
         move: "check understanding"
       },
       %{
         say: nil,
-        agent: "Writes a quiz in gate mode.",
-        board: "Answer the quiz; two answers are wrong.",
+        agent: "Waits for you.",
+        board: "Answer the quiz; two answers are wrong. Write what is still unclear.",
         move: "gaps found"
       },
       %{
         say: "learn Task 4.2",
-        agent: "Revises the parts your wrong answers point at.",
-        board: nil,
+        agent: "Revises the explanations your wrong answers made out of date, and hands over.",
+        board: "Read the turn report.",
         move: "check understanding"
       },
       %{
@@ -227,12 +249,24 @@ defmodule JarvisWeb.GuideLive do
         {"#concepts", "Concepts"},
         {"#claims", "Claims and sessions"},
         {"#comments", "Comments"},
-        {"#gates", "Gate quizzes"}
+        {"#gates", "Gate quizzes"},
+        {"#turns", "Whose turn"},
+        {"#turn-reports", "Turn reports"},
+        {"#evidence", "Evidence"},
+        {"#out-of-date", "Out of date"},
+        {"#section-owners", "Steps own sections"}
       ] ++
         for({type, a} <- types, do: {"##{a}", TaskType.label(type)}) ++
         [{"#other-workflows", "Other workflows"}]
 
-    assigns = assign(assigns, concepts: @concepts, claims: @claims, types: types, toc: toc)
+    assigns =
+      assign(assigns,
+        concepts: @concepts,
+        claims: @claims,
+        cascades: @cascades,
+        types: types,
+        toc: toc
+      )
 
     ~H"""
     <Layouts.app
@@ -323,6 +357,75 @@ defmodule JarvisWeb.GuideLive do
         </section>
       </div>
 
+      <div class="mt-10 grid gap-6 md:grid-cols-2">
+        <section id="turns" class="scroll-mt-20">
+          <h2 class="text-lg font-semibold">Whose turn</h2>
+          <div class="mt-1 text-sm text-base-content/70">
+            <.markdown text="Every step gives the turn to someone when it begins; each type's table below says who. On your turn the task page lists each decision open to you, and what each still lacks. On the agent's turn it names the command and the worktree. It also says whether a session works on it now. When an agent's work in a step is ready, it hands the step over and the turn is yours. Sending work back without leaving the step, as *request design changes* does, gives the turn back to the agent. In a PR review's Quiz, answering every question or pressing **Skip quiz** gives the turn to the agent. Your buttons work on either turn. Each move you make reaches the listening session at its next turn, with your comment. Jarvis never wakes a session. The filter **Your turn** on the project board shows only tasks waiting for you." />
+          </div>
+        </section>
+        <section id="turn-reports" class="scroll-mt-20">
+          <h2 class="text-lg font-semibold">Turn reports</h2>
+          <div class="mt-1 text-sm text-base-content/70">
+            <.markdown text="When an agent turn ends after it changed the board, the task page shows a turn report at the top. It lists each widget the turn added, changed, or removed, with its content before and after. For lists it names the items added, removed, or changed. Each change shows the agent's reason, or *No reason given*. The report ends with what the agent needs from you. The widgets it changed are marked. Press **Mark turn as read** to move the report to the history **Turns**. A goal page shows reports of changes to the goal and the tasks created in it. Changes to code files never appear; git shows them." />
+          </div>
+        </section>
+        <section id="evidence" class="scroll-mt-20">
+          <h2 class="text-lg font-semibold">Evidence at a handoff</h2>
+          <div class="mt-1 text-sm text-base-content/70">
+            <.markdown text="A Feature reaches your gate only with evidence you can check. Jarvis checks what the evidence says; it runs nothing itself." />
+          </div>
+          <ul class="mt-2 space-y-1 text-sm">
+            <li id="evidence-design">
+              <strong>design</strong>
+              hands Design over only with a review report in the section Review.
+              You can approve the design whatever the review found.
+            </li>
+            <li id="evidence-impl">
+              <strong>implemented</strong>
+              waits for evidence: the check passed, every requirement has a
+              passing test, and a review report exists.
+            </li>
+          </ul>
+        </section>
+        <section id="section-owners" class="scroll-mt-20">
+          <h2 class="text-lg font-semibold">Steps own sections</h2>
+          <div class="mt-1 text-sm text-base-content/70">
+            <.markdown text="An agent writes a task's sections only while its step owns them; each type's table below lists them. In Acceptance no section is the agent's, so what you weigh cannot change under you. Your own actions on widgets are never limited. Only `poc` may jump a task to any step, with `force_step`, and only in a goal marked POC." />
+          </div>
+        </section>
+      </div>
+
+      <section id="out-of-date" class="mt-10 scroll-mt-20">
+        <h2 class="text-lg font-semibold">Out of date</h2>
+        <p class="mt-1 max-w-3xl text-sm text-base-content/70">
+          A change upstream marks what builds on it Out of date, with what changed and a link to it.
+          The mark goes when the agent writes the widget again.
+        </p>
+        <div class="mt-3 overflow-x-auto rounded-2xl border border-base-300 bg-base-100">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-base-200/60 text-xs uppercase tracking-wide text-base-content/70">
+              <tr>
+                <th class="px-4 py-2 font-medium">Change upstream</th>
+                <th class="px-4 py-2 font-medium">Out of date</th>
+                <th class="px-4 py-2 font-medium">Blocks</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                :for={{id, change, stale, blocks} <- @cascades}
+                id={id}
+                class="border-t border-base-300 align-top"
+              >
+                <td class="px-4 py-2">{change}</td>
+                <td class="px-4 py-2">{stale}</td>
+                <td class="px-4 py-2">{blocks}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <.type_section :for={{type, a} <- @types} type={type} anchor={a} />
 
       <section id="other-workflows" class="mt-12 scroll-mt-20">
@@ -334,7 +437,8 @@ defmodule JarvisWeb.GuideLive do
             </p>
             <p class="mt-2 text-sm text-base-content/70">
               Builds every task of a goal in one go, in this worktree, so you see a result fast.
-              It moves the tasks past your transitions and leaves a comment on every task it builds.
+              It moves the tasks past your transitions with <code>force_step</code>.
+              That works only in a goal marked POC. It leaves a comment on every task it builds.
               The goal stays marked POC until you click <strong>Mark reviewed</strong>
               on the goal page.
             </p>
@@ -391,6 +495,51 @@ defmodule JarvisWeb.GuideLive do
         <div class="mt-3 grid gap-2 md:grid-cols-3">
           <.transition_card :for={t <- @transitions} type={@type} anchor={@anchor} t={t} />
         </div>
+      </div>
+
+      <div class="mt-3 overflow-x-auto rounded-2xl border border-base-300 bg-base-100">
+        <table id={"#{@anchor}-steps"} class="w-full text-left text-sm">
+          <thead class="bg-base-200/60 text-xs uppercase tracking-wide text-base-content/70">
+            <tr>
+              <th class="px-4 py-2 font-medium">Step</th>
+              <th class="px-4 py-2 font-medium">Turn when it begins</th>
+              <th class="px-4 py-2 font-medium">An agent writes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              :for={{key, label, _} <- TaskType.steps(@type)}
+              id={"#{@anchor}-steps-#{key}"}
+              class="border-t border-base-300 align-top"
+            >
+              <td class="px-4 py-2 font-medium">{label}</td>
+              <td data-role="turn" class="px-4 py-2">{turn_text(TaskType.start_turn(@type, key))}</td>
+              <td data-role="owns" class="px-4 py-2">
+                {case TaskType.owned_sections(@type, key) do
+                  [] -> "Nothing"
+                  keys -> Enum.map_join(keys, ", ", &TaskType.section_label(@type, &1))
+                end}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div
+        :if={@type == :pr_review}
+        id="your-view"
+        class="mt-3 rounded-2xl border border-base-300 bg-base-100 p-4"
+      >
+        <p class="font-semibold">Your view</p>
+        <p class="mt-1 max-w-3xl text-sm text-base-content/70">
+          In Findings you first write your own concerns, one per line, or skip.
+          The first round's findings stay hidden until then, so you review yourself instead of only agreeing.
+          Turn reports name changes to them without showing them.
+          The agent then matches them: each finding says <em>You saw this too</em>
+          or <em>Only the agent</em>,
+          and each concern no finding covers says <em>Only you</em>. You can change any match.
+          Findings of later rounds show at once.
+        </p>
       </div>
 
       <div :if={@type == :feature} class="mt-3 grid gap-3 md:grid-cols-2">
@@ -494,14 +643,17 @@ defmodule JarvisWeb.GuideLive do
       </div>
       <p data-role="mover" data-mover={@t.mover} class="mt-1 text-xs text-base-content/70">
         <%= if @t.mover == :human do %>
-          You click it on the task page.
+          You click it on the task page; no agent can.
         <% else %>
           <code class="rounded bg-base-200 px-1">{workflow(@t)}</code> moves it.
         <% end %>
       </p>
-      <p :if={@t[:condition]} data-role="condition" class="mt-1 text-xs">
+      <p :if={@t[:comment]} data-role="comment" class="mt-1 text-xs font-medium">
+        Needs your comment on what to change.<span :if={@t[:creates_task]}> It becomes a new task in Requirements.</span>
+      </p>
+      <p :for={c <- @t[:conditions] || []} data-role="condition" class="mt-1 text-xs">
         <span class="rounded bg-warning/30 px-1.5 py-0.5 text-base-content">
-          {condition(@t.condition)}
+          {condition(c)}
         </span>
       </p>
     </div>
@@ -518,6 +670,23 @@ defmodule JarvisWeb.GuideLive do
 
   # A condition without a sentence here must crash the page, not vanish from it.
   defp condition(:requirements_confirmed), do: "Only when every requirement card is confirmed."
+  defp condition(:review_current), do: "Only when the review report is not out of date."
+
+  defp condition(:evidence),
+    do: "Only with evidence: check passed, a passing test per requirement, a review."
+
+  defp condition(:evidence_current),
+    do: "Only when the evidence and the review are not out of date."
+
+  defp condition(:quiz_answered),
+    do: "Only when you answered every quiz question, or skipped the quiz."
+
+  defp turn_text({:agent, command, true}),
+    do: "The agent's (#{workflow(%{command: command})}); it hands the step over to you"
+
+  defp turn_text({:agent, command, false}), do: "The agent's (#{workflow(%{command: command})})"
+  defp turn_text(:human), do: "Yours"
+  defp turn_text(:none), do: "Nobody's"
 
   defp workflow(t), do: String.trim_leading(t.command, "/")
 

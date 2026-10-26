@@ -5,7 +5,8 @@ defmodule Jarvis.Planning.Comment do
   the comment still makes sense after the widget or part is gone.
 
   Human comments without an anchor reach agents at the start of their next
-  turn (the inbox). Comments with `deliver` set wake the listening session and
+  turn (the inbox). A move the human made (`transition`, `to_step`, and their
+  comment as `body`) is delivered like an anchored comment. Comments with `deliver` set wake the listening session and
   are marked `delivered_at` once it has taken them.
   """
   use Ecto.Schema
@@ -21,6 +22,9 @@ defmodule Jarvis.Planning.Comment do
     field :anchor_text, :string
     field :deliver, :boolean, default: false
     field :delivered_at, :utc_datetime_usec
+    # A move the human made: the transition and the step it led to
+    field :transition, :string
+    field :to_step, :string
     belongs_to :goal, Jarvis.Planning.Goal
     belongs_to :task, Jarvis.Planning.Task
     belongs_to :widget, Jarvis.Planning.Widget

@@ -130,9 +130,15 @@ defmodule Jarvis.PlanningTest do
       assert %{transition: ["Write at least one requirement card first"]} = errors_on(changeset)
     end
 
-    test "an agent cannot take the human's decision", %{scope: scope, task: task} do
+    test "an agent cannot take the human's decision, and is told where the button is", %{
+      scope: scope,
+      task: task
+    } do
       assert {:error, changeset} = Planning.move_task(scope, task, "approve requirements")
-      assert %{transition: ["This transition is the human's decision"]} = errors_on(changeset)
+      assert %{transition: [message]} = errors_on(changeset)
+      assert message =~ ~s("approve requirements" is the human's decision)
+      assert message =~ "/goals/1/tasks/1"
+      assert Planning.fetch_task(scope, 1, 1) |> elem(1) |> Map.get(:step) == "requirements"
     end
 
     test "naming a transition that does not leave the step lists the ones that do", %{
@@ -146,22 +152,34 @@ defmodule Jarvis.PlanningTest do
     end
 
     test "agent transitions work for an agent and loop back", %{scope: scope, task: task} do
-      {:ok, task} = Planning.update_task(scope, task, %{"force_step" => "design"})
+      {:ok, task} = {:ok, at_step!(task, "design", task.step)}
       assert {:ok, task} = Planning.move_task(scope, task, "requirements question")
       assert {task.step, task.previous_step} == {"requirements", "design"}
     end
 
-    test "force_step jumps anywhere and rejects unknown steps", %{scope: scope, task: task} do
-      assert {:ok, %{step: "review", previous_step: "requirements"}} =
-               Planning.update_task(scope, task, %{"force_step" => "review"})
+    test "force_step jumps anywhere in a POC goal and rejects unknown steps", %{
+      scope: scope,
+      goal: goal,
+      task: task
+    } do
+      {:ok, _} = Planning.update_goal(scope, goal, %{"poc" => true})
+
+      assert {:ok, %{step: "acceptance", previous_step: "requirements"}} =
+               Planning.update_task(scope, task, %{"force_step" => "acceptance"})
 
       assert {:error, changeset} = Planning.update_task(scope, task, %{"force_step" => "nowhere"})
       assert %{force_step: [_]} = errors_on(changeset)
     end
 
+    test "force_step is refused outside POC goals", %{scope: scope, task: task} do
+      assert {:error, changeset} = Planning.update_task(scope, task, %{"force_step" => "done"})
+      assert %{force_step: [message]} = errors_on(changeset)
+      assert message =~ "only for POC goals"
+    end
+
     test "done has no transitions out", %{scope: scope, task: task} do
-      {:ok, task} = Planning.update_task(scope, task, %{"force_step" => "done"})
-      assert {:error, changeset} = Planning.move_task(scope, task, "approve")
+      {:ok, task} = {:ok, at_step!(task, "done", task.step)}
+      assert {:error, changeset} = Planning.move_task(scope, task, "accept")
       assert %{transition: [message]} = errors_on(changeset)
       assert message =~ "this step has none"
     end
@@ -172,7 +190,7 @@ defmodule Jarvis.PlanningTest do
       human: human
     } do
       learn = task!(scope, goal, %{"type" => "learn"})
-      {:ok, learn} = Planning.update_task(scope, learn, %{"force_step" => "check"})
+      {:ok, learn} = {:ok, at_step!(learn, "check", learn.step)}
 
       quiz =
         widget!(scope, goal, learn, "check", "quiz", %{
@@ -279,7 +297,7 @@ defmodule Jarvis.PlanningTest do
     test "unknown kinds and sections list the valid ones", %{scope: scope, goal: goal, task: task} do
       assert {:error, {:widgets, [kind]}} =
                Planning.apply_widget_ops(scope, goal, task, [
-                 %{"op" => "add", "section" => "tests", "kind" => "chart", "data" => %{}}
+                 %{"op" => "add", "section" => "intent", "kind" => "chart", "data" => %{}}
                ])
 
       assert kind =~ "no widget kind \"chart\"; kinds: prose, callout"
@@ -344,7 +362,10 @@ defmodule Jarvis.PlanningTest do
       assert text =~ "row:r2"
 
       assert text =~
-               ~s("approve requirements" → Design, moved by the human — blocked: Write at least one requirement card first)
+               ~s|"approve requirements" → Design, moved by the human only (a button on the task page; never make it yourself) — blocked: Write at least one requirement card first|
+
+      assert text =~ "**Turn:** the agent's (/specify)."
+      assert text =~ "**Sections you may write in this step:** intent, requirements,"
 
       assert text =~ "## Intent (`intent`)\n\n_Nothing yet._"
     end

@@ -48,7 +48,9 @@ defmodule JarvisWeb.GraphLayoutTest do
 
     assert Enum.map(back, & &1.t.name) |> Enum.sort() == [
              "request changes",
-             "requirements question"
+             "request design changes",
+             "requirements question",
+             "spec issue"
            ]
 
     assert map_size(layout.steps) == 5

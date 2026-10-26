@@ -18,6 +18,11 @@ defmodule Jarvis.Planning.Task do
     field :type, Ecto.Enum, values: TaskType.keys()
     field :step, :string
     field :previous_step, :string
+    # nil: whoever the step gives the turn to when it begins (TaskType.start_turn/2)
+    field :turn, Ecto.Enum, values: [:agent, :human]
+    field :quiz_skipped, :boolean, default: false
+    # PR review: the human's own concerns before seeing the agent's findings
+    field :picture, :map, default: %{}
 
     belongs_to :goal, Jarvis.Planning.Goal
     belongs_to :project, Jarvis.Workspaces.Project

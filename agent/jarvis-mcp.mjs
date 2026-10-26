@@ -10,6 +10,10 @@ const AGENT = process.argv[2] ?? "codex";
 const BASE_URL = (process.env.JARVIS_URL ?? "http://localhost:4000").replace(/\/$/, "");
 const int = (description) => ({ type: "integer", minimum: 1, description });
 const obj = (properties, required = []) => ({ type: "object", properties, required });
+const report = {
+	reason: { type: "string", description: "Why you make this change, in one line; shown in your turn report (e.g. \"Q3 → R2 reworded\")" },
+	needs: { type: "string", description: "What you need from the human now, in one line; shown in your turn report" },
+};
 
 const widgetOp = obj(
 	{
@@ -52,7 +56,8 @@ const TOOLS = {
 			"Create a task in a goal (omit task) or update one (give task). Only the fields you pass change. " +
 			"type (on create only; never changes): feature (default), research, pr_review, learn. A task starts in the first step of its type's lifecycle. " +
 			"transition: move along the named transition out of the current step (jarvis_read lists them; transitions whose mover is the human are refused, and so are ones whose condition is not met). " +
-			"force_step: jump to a step regardless of the lifecycle, for proof-of-concept runs only. " +
+			"handoff: true gives the turn to the human inside the step, when your work there is ready for their decision. " +
+			"force_step: jump to a step regardless of the lifecycle, only in POC goals. " +
 			"claim: true records this worktree as the task's Worktree; false releases it. Write sections with jarvis_widgets.",
 		schema: obj(
 			{
@@ -63,6 +68,8 @@ const TOOLS = {
 				transition: { type: "string", description: 'Name of a transition out of the current step, e.g. "implemented"' },
 				force_step: { type: "string", description: "Step key to jump to, ignoring the lifecycle (proof of concept only)" },
 				claim: { type: "boolean", description: "true: claim for this worktree; false: release" },
+				handoff: { type: "boolean", description: "true: hand the step over to the human without leaving it (only in steps that are handed over)" },
+				...report,
 			},
 			["goal"],
 		),
@@ -72,6 +79,7 @@ const TOOLS = {
 	jarvis_widgets: {
 		description:
 			"Add, update, move, or delete the widgets that make up the sections of a goal (omit task) or a task. All ops of one call succeed or fail together; a failure names the op and every invalid field. " +
+			"In a task you may write only the sections its current step owns (jarvis_read lists them). Give reason (and needs) so the human's turn report says why. " +
 			"Keep ids of list items when you update a widget so the human's comments, answers, and confirmations stay attached. " +
 			"Prefer visual widgets over prose. judge records your verdict on a human's free-text quiz answer.",
 		schema: obj(
@@ -79,10 +87,11 @@ const TOOLS = {
 				goal: int("Goal number"),
 				task: int("Task number; omit to write the goal's own sections"),
 				ops: { type: "array", minItems: 1, items: widgetOp, description: "Operations, applied in order" },
+				...report,
 			},
 			["goal", "ops"],
 		),
-		request: ({ goal, task, ops }) => ["POST", task ? `/goals/${goal}/tasks/${task}/widgets` : `/goals/${goal}/widgets`, { ops }],
+		request: ({ goal, task, ops, reason, needs }) => ["POST", task ? `/goals/${goal}/tasks/${task}/widgets` : `/goals/${goal}/widgets`, { ops, reason, needs }],
 	},
 	jarvis_catalog: {
 		description:
