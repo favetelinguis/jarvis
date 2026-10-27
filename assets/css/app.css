@@ -147,6 +147,8 @@ html { line-height: var(--leading-body); }
 .md code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; padding: 0.1em 0.35em; border-radius: 0.3em; background: color-mix(in oklab, currentColor 8%, transparent); }
 .md pre { font-size: 0.8em; padding: 0.8em 1em; border-radius: 0.6em; overflow-x: auto; background: color-mix(in oklab, currentColor 6%, transparent); }
 .md pre code { padding: 0; background: none; font-size: 1em; }
+.md.walkthrough-code pre { font-size: 1em; }
+#task-content .md :where(p, li, blockquote) { max-width: 75ch; }
 .md blockquote { border-left: 3px solid color-mix(in oklab, currentColor 20%, transparent); padding-left: 0.9em; opacity: 0.85; }
 .md table { width: 100%; border-collapse: collapse; font-size: 0.9em; display: block; overflow-x: auto; }
 .md th, .md td { border: 1px solid color-mix(in oklab, currentColor 15%, transparent); padding: 0.35em 0.6em; text-align: left; vertical-align: top; }

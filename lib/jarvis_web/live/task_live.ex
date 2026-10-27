@@ -320,8 +320,8 @@ defmodule JarvisWeb.TaskLive do
         />
       </.panel>
 
-      <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <article class="space-y-8">
+      <div id="task-body" class="mt-6 space-y-6">
+        <article id="task-content" class="space-y-8">
           <.section_toc
             sections={@sections}
             widgets={@widgets}
@@ -351,7 +351,7 @@ defmodule JarvisWeb.TaskLive do
           <.removed_anchors comments={@removed} />
         </article>
 
-        <aside class="space-y-4">
+        <aside id="task-context" class="max-w-3xl space-y-4">
           <.panel title="Who hears your comments" id="task-listener">
             <p :if={@listener} class="flex items-center gap-2 text-sm">
               <.presence_dot presence={AgentSession.presence(@listener, @now)} />

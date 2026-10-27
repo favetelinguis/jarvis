@@ -71,6 +71,30 @@ defmodule JarvisWeb.MayerTest do
     refute has_element?(view, "#walk-prev-#{one.id}")
   end
 
+  test "walkthrough code and explanation stay stacked at every viewport width", %{
+    conn: conn,
+    scope: scope,
+    goal: goal,
+    task: task
+  } do
+    for steps <- [[walk_step(1)], Enum.map(1..2, &walk_step/1)] do
+      walk = widget!(scope, goal, task, "sketch", "walkthrough", %{"steps" => steps})
+      {:ok, view, _} = open(conn, scope, "?section=sketch")
+
+      assert has_element?(view, "#widget-#{walk.id} .\\@container #walk-current-#{walk.id}")
+      assert has_element?(view, "#walk-current-#{walk.id} > .flex.flex-wrap")
+
+      if length(steps) > 1 do
+        assert has_element?(view, "[class*='@xl:grid-cols'] > #walk-current-#{walk.id}")
+        refute has_element?(view, "[class*='lg:grid-cols'] > #walk-current-#{walk.id}")
+      end
+
+      layout = "#walk-current-#{walk.id} > .grid:not([class*='grid-cols'])"
+      assert has_element?(view, "#{layout} > .walkthrough-code pre", "x = 1")
+      assert has_element?(view, "#{layout} > :last-child", "Step 1.")
+    end
+  end
+
   test "a quiz shows one question at a time", %{conn: conn, scope: scope, goal: goal, task: task} do
     [q | _] = Catalog.example("quiz")["questions"]
     questions = for i <- 1..5, do: %{q | "id" => "q#{i}"}

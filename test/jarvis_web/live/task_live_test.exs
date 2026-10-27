@@ -16,6 +16,23 @@ defmodule JarvisWeb.TaskLiveTest do
   defp open(conn, scope, n \\ 1),
     do: live(conn, ~p"/projects/#{scope.project}/goals/1/tasks/#{n}")
 
+  test "task content spans the page before the conversation for every task type", %{
+    conn: conn,
+    scope: scope,
+    goal: goal
+  } do
+    for type <- ~w(research pr_review learn) do
+      task!(scope, goal, %{"type" => type, "title" => type})
+    end
+
+    for n <- 1..4 do
+      {:ok, view, _} = open(conn, scope, n)
+      assert has_element?(view, "#task-body:not([class*=grid-cols]) > #task-content")
+      assert has_element?(view, "#task-content + #task-context #task-listener")
+      assert has_element?(view, "#task-context #task-comments #comment-form")
+    end
+  end
+
   describe "the lifecycle graph" do
     test "shows the type, the current step, and the next steps", %{conn: conn, scope: scope} do
       {:ok, view, _} = open(conn, scope)

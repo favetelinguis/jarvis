@@ -1434,9 +1434,9 @@ defmodule JarvisWeb.WidgetComponents do
     assigns = assign(assigns, d: d, steps: steps, index: index, step: step)
 
     ~H"""
-    <div>
+    <div class="@container">
       <p :if={@d["title"]} class="mb-2 font-semibold">{@d["title"]}</p>
-      <div class={["grid gap-3", length(@steps) > 1 && "lg:grid-cols-[12rem_minmax(0,1fr)]"]}>
+      <div class={["grid gap-3", length(@steps) > 1 && "lg:@xl:grid-cols-[12rem_minmax(0,1fr)]"]}>
         <ol :if={length(@steps) > 1} class="space-y-1 text-sm">
           <li :for={{s, i} <- Enum.with_index(@steps)}>
             <button
@@ -1452,14 +1452,14 @@ defmodule JarvisWeb.WidgetComponents do
                 if(i == @index, do: "bg-primary text-primary-content", else: "hover:bg-base-200")
               ]}
             >
-              <span class="font-mono text-[0.625rem] opacity-70">{i + 1}</span>
-              <span class="block truncate font-mono text-xs">{Path.basename(s["path"])}</span>
+              <span class="font-mono text-xs opacity-70">{i + 1}</span>
+              <span class="block truncate font-mono text-sm">{Path.basename(s["path"])}</span>
             </button>
           </li>
         </ol>
         <div class="group/part min-w-0 space-y-2" id={"walk-current-#{@w.id}"}>
-          <div class="flex items-center gap-2 text-xs">
-            <span class="font-mono font-semibold">{@step["path"]}<span
+          <div class="flex flex-wrap items-center gap-2 text-sm">
+            <span class="w-full font-mono font-semibold @sm:w-auto">{@step["path"]}<span
               :if={@step["lines"]}
               class="text-base-content/70"
             >:{@step["lines"]}</span></span>
@@ -1473,13 +1473,13 @@ defmodule JarvisWeb.WidgetComponents do
             </span>
             <.part_button w={@w} part={"step:#{@step["id"]}"} ctx={@ctx} />
           </div>
-          <div class="grid gap-3 xl:grid-cols-2">
+          <div class="grid gap-3">
             <.markdown
               text={fence(@step["code"], @step["language"])}
-              class="text-sm [&_pre]:max-h-80"
+              class="walkthrough-code [&_pre]:max-h-[32rem]"
             />
             <div class="rounded-xl bg-primary/10 p-3 ring-1 ring-primary/30">
-              <.markdown glossary={@ctx.glossary} text={@step["narration"]} class="text-sm" />
+              <.markdown glossary={@ctx.glossary} text={@step["narration"]} class="max-w-prose" />
             </div>
           </div>
           <div :if={length(@steps) > 1} class="flex gap-2">
@@ -1492,7 +1492,7 @@ defmodule JarvisWeb.WidgetComponents do
               phx-value-key="step"
               phx-value-value={@index - 1}
               value={@index - 1}
-              class="rounded-lg border border-base-300 px-2.5 py-1 text-xs font-medium hover:bg-base-200 disabled:opacity-40"
+              class="rounded-lg border border-base-300 px-2.5 py-1 text-sm font-medium hover:bg-base-200 disabled:opacity-40"
             >Previous</button>
             <button
               :if={@index < length(@steps) - 1}
@@ -1503,7 +1503,7 @@ defmodule JarvisWeb.WidgetComponents do
               phx-value-key="step"
               phx-value-value={@index + 1}
               value={@index + 1}
-              class="rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-content hover:opacity-90 disabled:opacity-40"
+              class="rounded-lg bg-primary px-2.5 py-1 text-sm font-medium text-primary-content hover:opacity-90 disabled:opacity-40"
             >Next</button>
           </div>
         </div>
