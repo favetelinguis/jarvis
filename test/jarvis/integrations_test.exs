@@ -273,7 +273,15 @@ defmodule Jarvis.IntegrationsTest do
       assert pi =~ "name: jarvis-scout\n"
       assert pi =~ "tools: read, grep, find, ls, mcp:jarvis/jarvis_read\n"
       assert pi =~ "\nmodel: openrouter/openai/gpt-6-luna\n"
-      assert pi =~ "\nthinking: low\n"
+      assert pi =~ "\nthinking: medium\n"
+
+      codex_scout = File.read!(Path.join(home, ".codex/agents/jarvis-scout.toml"))
+      assert codex_scout =~ ~s(\nmodel = "gpt-5.6-luna"\n)
+      assert codex_scout =~ ~s(\nmodel_reasoning_effort = "medium"\n)
+
+      copilot_scout = File.read!(Path.join(home, ".copilot/agents/jarvis-scout.agent.md"))
+      assert copilot_scout =~ "\nmodel: gpt-6-luna\n"
+      assert copilot_scout =~ "\nreasoning-effort: medium\n"
 
       codex = File.read!(Path.join(home, ".codex/agents/jarvis-design-reviewer.toml"))
       assert codex =~ ~s(name = "jarvis-design-reviewer"\n)
@@ -303,7 +311,7 @@ defmodule Jarvis.IntegrationsTest do
       for {agent, {scout, reviewer}} <- expected do
         assert %{state: :not_installed, subagents: rows} = Integrations.status(agent)
         by_name = Map.new(rows, &{&1.name, &1})
-        assert %{model: ^scout, effort: "low"} = by_name["jarvis-scout"]
+        assert %{model: ^scout, effort: "medium"} = by_name["jarvis-scout"]
         assert %{model: ^reviewer, effort: "high"} = by_name["jarvis-design-reviewer"]
         assert %{model: ^reviewer, effort: "high"} = by_name["jarvis-impl-reviewer"]
       end

@@ -26,11 +26,11 @@ defmodule Jarvis.Integrations.Subagents do
   # The scout is cheap and quick; the reviewers get the stronger model and more effort.
   @defaults %{
     pi: %{
-      scout: {"openrouter/openai/gpt-6-luna", "low"},
+      scout: {"openrouter/openai/gpt-6-luna", "medium"},
       reviewer: {"openrouter/anthropic/claude-opus-5.5", "high"}
     },
-    codex: %{scout: {"gpt-5.6-luna", "low"}, reviewer: {"gpt-5.6-terra", "high"}},
-    copilot: %{scout: {"gpt-6-luna", "low"}, reviewer: {"claude-opus-5.5", "high"}}
+    codex: %{scout: {"gpt-5.6-luna", "medium"}, reviewer: {"gpt-5.6-terra", "high"}},
+    copilot: %{scout: {"gpt-6-luna", "medium"}, reviewer: {"claude-opus-5.5", "high"}}
   }
   @efforts %{
     pi: ~w(off minimal low medium high xhigh max),
