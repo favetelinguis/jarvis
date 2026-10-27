@@ -51,7 +51,7 @@ defmodule JarvisWeb.GuideLiveTest do
       view = open(conn)
 
       for term <-
-            ~w(goal task task-type step transition mover turn handoff turn-report out-of-date evidence claim worktree session) do
+            ~w(goal task task-type step transition mover turn handoff turn-report out-of-date evidence claim worktree subagent session) do
         assert has_element?(view, "#concepts #concept-#{term}"), "no concept #{term}"
       end
     end
@@ -91,10 +91,10 @@ defmodule JarvisWeb.GuideLiveTest do
       assert has_element?(view, "#claim-design", "replaces the old claim")
     end
 
-    test "impl and impl-review work only on tasks their worktree claimed", %{conn: conn} do
+    test "impl works only on tasks its worktree claimed", %{conn: conn} do
       view = open(conn)
       assert has_element?(view, "#claim-impl", "Implementation or Acceptance")
-      assert has_element?(view, "#claim-impl", "impl and impl-review work only on tasks")
+      assert has_element?(view, "#claim-impl", "impl works only on tasks")
     end
 
     test "Research, PR review, and Learn tasks are never claimed", %{conn: conn} do

@@ -4,7 +4,7 @@ defmodule Jarvis.Integrations do
   coding agents (pi, Codex, Copilot CLI).
 
   An integration is a list of *entries*: the pi package, an MCP tools server, presence
-  hooks, the workflow skills. The state of an agent is always read from its
+  hooks, the workflow skills, the custom subagents. The state of an agent is always read from its
   configuration files at that moment (`:installed`, `:partial`, `:not_installed`,
   or `:unreadable`), never remembered. Install and uninstall add and remove only
   Jarvis entries: TOML is edited by inserting and cutting marked blocks, so the rest
@@ -15,6 +15,8 @@ defmodule Jarvis.Integrations do
   `{:ok, version}` or `:not_found` for an agent, for tests).
   """
 
+  alias Jarvis.Integrations.Subagents
+
   @type agent :: :pi | :codex | :copilot
   @type state :: :installed | :partial | :not_installed | :unreadable
   @type status :: %{
@@ -22,15 +24,20 @@ defmodule Jarvis.Integrations do
           label: String.t(),
           cli: {:ok, String.t()} | :not_found,
           state: state(),
-          error: String.t() | nil
+          error: String.t() | nil,
+          subagents: [
+            %{name: String.t(), description: String.t(), model: String.t(), effort: String.t()}
+          ]
         }
 
   @agents [pi: "pi", codex: "Codex", copilot: "Copilot CLI"]
   @entries %{
-    pi: [:package, :skills],
-    codex: [:tools, :presence, :skills],
-    copilot: [:tools, :presence, :skills]
+    pi: [:package, :skills, :subagents],
+    codex: [:tools, :presence, :skills, :subagents],
+    copilot: [:tools, :presence, :skills, :subagents]
   }
+  # Workflows that became subagents; Install and Uninstall remove their old skill copies.
+  @retired_skills ~w(design-review impl-review)
   @marker ".jarvis-managed"
   @default_root Path.expand("../..", __DIR__)
 
@@ -56,19 +63,31 @@ defmodule Jarvis.Integrations do
       label: Keyword.fetch!(@agents, agent),
       cli: cli(agent),
       state: state,
-      error: error || read_error
+      error: error || read_error,
+      subagents: subagent_rows(agent)
     }
   end
 
-  @doc "Adds every Jarvis entry of `agent` that is missing or out of date."
-  @spec install(agent()) :: status()
-  def install(agent) do
+  @doc """
+  Adds every Jarvis entry of `agent` that is missing or out of date. `subagents` holds the
+  model and effort the human chose, per subagent name (see `Subagents`); what it leaves
+  out stays as installed.
+  """
+  @spec install(agent(), map()) :: status()
+  def install(agent, subagents \\ %{}) do
     locked(agent, fn ->
       with :ok <- require_cli(agent),
            {:ok, states} <- entry_states(agent),
+           {:ok, desired} <-
+             Subagents.resolve(agent, definitions(), read_subagents(agent), subagents),
+           states = Map.put(states, :subagents, subagents_state(agent, desired)),
            :ok <- check_skill_conflicts(agent, states),
            :ok <- strip_old_mirror_hook(agent),
-           :ok <- each_entry(@entries[agent], states, &add(agent, &1)) do
+           :ok <-
+             each_entry(@entries[agent], states, fn
+               :subagents -> Subagents.write(home(), agent, definitions(), desired)
+               entry -> add(agent, entry)
+             end) do
         status(agent)
       else
         {:error, message} -> status(agent, message)
@@ -190,7 +209,8 @@ defmodule Jarvis.Integrations do
 
   # Per entry: is it in the configuration, add it, remove it. pi: package in settings.json;
   # Codex: marked blocks in config.toml; Copilot CLI: mcp-config.json and hooks in
-  # settings.json; skills: the ten workflows in ~/.agents/skills, shared by all agents.
+  # settings.json; skills: the workflows in ~/.agents/skills, shared by all agents;
+  # subagents: one file per subagent in the agent's own agents directory.
   defp present?(:pi, :package) do
     with {:ok, json} <- read_json(pi_settings()) do
       entries = Enum.filter(json["packages"] || [], &jarvis_package?/1)
@@ -220,8 +240,12 @@ defmodule Jarvis.Integrations do
   end
 
   defp present?(_agent, :skills) do
-    {:ok, Enum.all?(skill_names(), &skill_current?/1)}
+    {:ok,
+     Enum.all?(skill_names(), &skill_current?/1) and not Enum.any?(@retired_skills, &managed?/1)}
   end
+
+  defp present?(agent, :subagents),
+    do: {:ok, subagents_state(agent, read_subagents(agent)) == :present}
 
   defp add(:pi, :package) do
     update_json(pi_settings(), fn json ->
@@ -265,7 +289,7 @@ defmodule Jarvis.Integrations do
       File.write!(Path.join(dest, @marker), "Installed by Jarvis; Uninstall removes it.\n")
     end)
 
-    :ok
+    remove_retired_skills()
   end
 
   defp remove(:pi, :package) do
@@ -306,14 +330,13 @@ defmodule Jarvis.Integrations do
     end)
   end
 
-  # The ten workflow skills, shared by all agents in ~/.agents/skills.
+  # The workflow skills, shared by all agents in ~/.agents/skills.
   defp remove(_agent, :skills) do
-    for name <- skill_names(), File.exists?(Path.join(skill_dir(name), @marker)) do
-      File.rm_rf!(skill_dir(name))
-    end
-
-    :ok
+    for name <- skill_names(), managed?(name), do: File.rm_rf!(skill_dir(name))
+    remove_retired_skills()
   end
+
+  defp remove(agent, :subagents), do: Subagents.remove(home(), agent, definitions())
 
   defp without_jarvis(hooks),
     do:
@@ -359,6 +382,34 @@ defmodule Jarvis.Integrations do
   end
 
   defp skill_dir(name), do: Path.join([home(), ".agents", "skills", name])
+  defp managed?(name), do: File.exists?(Path.join(skill_dir(name), @marker))
+
+  defp remove_retired_skills do
+    for name <- @retired_skills, managed?(name), do: File.rm_rf!(skill_dir(name))
+    :ok
+  end
+
+  ## Subagents
+
+  defp definitions, do: Subagents.definitions(root())
+  defp read_subagents(agent), do: Subagents.read(home(), agent, definitions())
+
+  defp subagents_state(agent, settings),
+    do:
+      if(Subagents.current?(home(), agent, definitions(), settings), do: :present, else: :missing)
+
+  defp subagent_rows(agent) do
+    settings = read_subagents(agent)
+
+    for %{name: name, description: description} <- definitions() do
+      %{
+        name: name,
+        description: description,
+        model: settings[name]["model"],
+        effort: settings[name]["effort"]
+      }
+    end
+  end
 
   defp skill_current?(name) do
     dest = skill_dir(name)
@@ -375,9 +426,7 @@ defmodule Jarvis.Integrations do
   defp check_skill_conflicts(agent, states) do
     if :skills in @entries[agent] and states[:skills] != :present do
       conflicts =
-        Enum.filter(skill_names(), fn name ->
-          File.exists?(skill_dir(name)) and not File.exists?(Path.join(skill_dir(name), @marker))
-        end)
+        Enum.filter(skill_names(), &(File.exists?(skill_dir(&1)) and not managed?(&1)))
 
       case conflicts do
         [] ->

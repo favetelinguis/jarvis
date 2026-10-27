@@ -54,6 +54,8 @@ defmodule JarvisWeb.GuideLive do
      "A worktree's hold on a Feature task, shown as the task's **Worktree** line. Only the claiming worktree builds and reviews the task."},
     {"worktree", "Worktree",
      "A checkout of the repository on its own branch; all worktrees of a repository share one board. Each can work on a different task."},
+    {"subagent", "Subagent",
+     "A helper agent that a workflow starts for one job. `jarvis-scout` looks up a fact while an agent interviews you. `jarvis-design-reviewer` and `jarvis-impl-reviewer` review a sketch or a diff in a fresh context. Install adds them to each coding agent, with the model and effort you set in Settings."},
     {"session", "Session",
      "One conversation with a coding agent (pi, Codex, or Copilot CLI) running in a worktree. The board shows each live session and the task it focuses on."}
   ]
@@ -64,7 +66,7 @@ defmodule JarvisWeb.GuideLive do
     {"claim-design", "Feature", "Another worktree", "Design",
      "`design` there claims the task and replaces the old claim."},
     {"claim-impl", "Feature", "Another worktree", "Implementation or Acceptance",
-     "`impl` and `impl-review` work only on tasks their worktree claimed, so they do not take it up there."},
+     "`impl` works only on tasks its worktree claimed, so it does not take it up there."},
     {"claim-unclaimed", "Research, PR review, or Learn", "Anything", "Any",
      "There is no claim to release: these tasks are never claimed."}
   ]
@@ -555,7 +557,7 @@ defmodule JarvisWeb.GuideLive do
               claims Task 1.2 there.
             </li>
             <li>
-              Each worktree runs <.prompt text="impl" /> and <.prompt text="impl-review" />
+              Each worktree runs <.prompt text="impl" />
               on its own task; the board shows both sessions and where each works.
             </li>
           </ol>

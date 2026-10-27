@@ -7,7 +7,7 @@ defmodule JarvisWeb.SettingsLive do
   """
   use JarvisWeb, :live_view
 
-  alias Jarvis.{Integrations, Language, Planning.Catalog, Theme}
+  alias Jarvis.{Integrations, Integrations.Subagents, Language, Planning.Catalog, Theme}
 
   import JarvisWeb.WidgetComponents
 
@@ -48,8 +48,10 @@ defmodule JarvisWeb.SettingsLive do
   def handle_async(:integrations, {:exit, _reason}, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("install", %{"agent" => agent}, socket),
-    do: {:noreply, change_integration(socket, agent, &Integrations.install/1)}
+  def handle_event("install", %{"agent" => agent} = params, socket),
+    do:
+      {:noreply,
+       change_integration(socket, agent, &Integrations.install(&1, params["subagents"] || %{}))}
 
   def handle_event("uninstall", %{"agent" => agent}, socket),
     do: {:noreply, change_integration(socket, agent, &Integrations.uninstall/1)}
@@ -339,7 +341,8 @@ defmodule JarvisWeb.SettingsLive do
         <h2 class="text-xl font-semibold tracking-tight">Install Jarvis in a coding agent</h2>
         <ol id="integration-steps" class="mt-2 list-decimal space-y-1 pl-6 text-sm">
           <li>Find your agent in the list.</li>
-          <li>Choose Install.</li>
+          <li>Optional: set a model and an effort for each subagent.</li>
+          <li>Choose Install. Choose it again after a change to update the subagents.</li>
           <li>Restart the agent, or run /reload in pi.</li>
         </ol>
         <div class="mt-4 max-w-xl">
@@ -388,28 +391,85 @@ defmodule JarvisWeb.SettingsLive do
                   Restart {row.label} to activate updated tools and hooks.
                 <% end %>
               </p>
-              <div class="mt-2 flex gap-2">
-                <button
-                  id={"install-#{row.agent}"}
-                  type="button"
-                  phx-click="install"
-                  phx-value-agent={row.agent}
-                  disabled={row.cli == :not_found or row.state == :unreadable}
-                  class="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-content transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              <.form
+                for={%{}}
+                id={"integration-form-#{row.agent}"}
+                phx-submit="install"
+                class="mt-2"
+              >
+                <input type="hidden" name="agent" value={row.agent} />
+                <fieldset
+                  :for={sub <- row.subagents}
+                  id={"subagent-#{row.agent}-#{sub.name}"}
+                  class="mb-2 rounded-lg border border-base-300 p-2"
                 >
-                  Install
-                </button>
-                <button
-                  id={"uninstall-#{row.agent}"}
-                  type="button"
-                  phx-click="uninstall"
-                  phx-value-agent={row.agent}
-                  disabled={row.state in [:not_installed, :unreadable]}
-                  class="rounded-md border border-base-300 px-2.5 py-1 text-xs font-medium transition hover:bg-base-200 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Uninstall
-                </button>
-              </div>
+                  <legend class="px-1 font-mono text-xs font-semibold">{sub.name}</legend>
+                  <p class="text-xs text-base-content/70">{sub.description}</p>
+                  <div class="mt-2 flex flex-wrap gap-3">
+                    <div class="min-w-48 flex-1">
+                      <label
+                        for={"subagent-model-#{row.agent}-#{sub.name}"}
+                        class="mb-1 block text-xs font-medium"
+                      >
+                        Model:
+                      </label>
+                      <input
+                        id={"subagent-model-#{row.agent}-#{sub.name}"}
+                        type="text"
+                        name={"subagents[#{sub.name}][model]"}
+                        value={sub.model}
+                        autocomplete="off"
+                        class="w-full rounded-lg border border-base-300 bg-base-100 px-2 py-1 font-mono text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        for={"subagent-effort-#{row.agent}-#{sub.name}"}
+                        class="mb-1 block text-xs font-medium"
+                      >
+                        Effort:
+                      </label>
+                      <select
+                        id={"subagent-effort-#{row.agent}-#{sub.name}"}
+                        name={"subagents[#{sub.name}][effort]"}
+                        class="min-h-8 rounded-lg border border-base-300 bg-base-100 px-2 py-1 text-sm"
+                      >
+                        <option value="" selected={sub.effort == ""}>Session's effort</option>
+                        <option
+                          :for={effort <- Subagents.efforts(row.agent)}
+                          value={effort}
+                          selected={sub.effort == effort}
+                        >
+                          {effort}
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+                  <p class="mt-2 text-xs text-base-content/70">
+                    Empty fields keep the session's setting.
+                  </p>
+                </fieldset>
+                <div class="flex gap-2">
+                  <button
+                    id={"install-#{row.agent}"}
+                    type="submit"
+                    disabled={row.cli == :not_found or row.state == :unreadable}
+                    class="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-content transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Install
+                  </button>
+                  <button
+                    id={"uninstall-#{row.agent}"}
+                    type="button"
+                    phx-click="uninstall"
+                    phx-value-agent={row.agent}
+                    disabled={row.state in [:not_installed, :unreadable]}
+                    class="rounded-md border border-base-300 px-2.5 py-1 text-xs font-medium transition hover:bg-base-200 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Uninstall
+                  </button>
+                </div>
+              </.form>
             </li>
           </ul>
         </div>

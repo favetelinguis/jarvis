@@ -47,7 +47,12 @@ Work autonomously and solve the problem as well as you can. Ask me only when a r
 5. **Clean up comments.** Delete every `SKETCH:` comment. Keep only what a reader cannot get from the code: a short doc comment where a caller needs to know something (in the project's doc style), and a why comment where a decision is not obvious. Most sketched functions end with no comment at all.
 6. **Docs:** update existing docs only where this change made them wrong or a user or caller will look for it. Add no new doc files.
 7. **Verify:** run the project's check and test commands until they pass. Confirm no `SKETCH:` comment and no pending marker from the outline remains.
-8. **Review in a fresh context:** start a reviewer with no memory of this work (a subagent where your harness has one, else a new session) on the diff, the task's web view link, and the review order of /impl-review. Fix what is local and safe, run the check again, and write the report as one `findings` widget in the section Review, with what is left. A review that finds nothing is an empty list. Where your harness cannot start a fresh context, say so in a `callout` next to it.
+8. **Review in a fresh context, in a loop:**
+   1. Start the `jarvis-impl-reviewer` subagent, which has no memory of this work, on the diff and the task's web view link, with the open items already with me. It reports findings, each with an owner (`[agent]` or `[human]`); it fixes nothing.
+   2. A `Critical` section: stop the loop. Fix nothing else, not even the trivial findings, because the change may be redone. Write the report and tell me; do not move the task.
+   3. Otherwise fix every `[agent]` finding, whatever its severity, then run the project's check and test commands until they pass. Keep every `[human]` finding (every Spec issue included) open for me; do not guess at it.
+   4. Start a fresh `jarvis-impl-reviewer` (a new subagent, never the same one) on the fixed change and repeat from 2. Stop when it reports nothing, when only `[human]` findings are left, when a `Critical` section appears, or after five rounds or when a round brings back a finding you already fixed (say so).
+   5. Write the last report as one `findings` widget in the section Review, with what is left. A review that finds nothing is an empty list. Where the subagent cannot start, say so in a `callout` next to it.
 9. **Evidence:** write one `evidence` widget in the section Evidence: the check command, its result, a short excerpt of its output, and one row per requirement card with its test (`file > test name`) and whether it passed. Every row names a requirement card of the task. Record what you ran; never a result you did not see.
 
 Implement this task only: work that belongs to a later task stays out, even when it is easy. In Jarvis, change only the task's Sketch, Tests, Review, and Evidence sections, and only to match what you actually built; when the work is done, move the task with `jarvis_task_save` `transition: "implemented"`. The board refuses it while evidence or the review is missing or out of date, the check failed, or a requirement lacks a passing test: fix what it names.
@@ -57,6 +62,6 @@ Your report is short and contains only:
 1. Where you departed from the sketch, and why, one line each.
 2. Tests you added beyond the outline, one line each.
 3. Anything you could not run, instead of claiming it passed.
-4. Concerns the reviewer should look at.
+4. Findings left open for me, and how many review rounds ran.
 
 Do not summarize the implementation or the test output. Omit any item with nothing to say; if all are empty, say "Done."

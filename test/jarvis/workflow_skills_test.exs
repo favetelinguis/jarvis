@@ -5,9 +5,11 @@ defmodule Jarvis.WorkflowSkillsTest do
   alias Jarvis.Planning.TaskType
 
   @skills Path.expand("../../skills", __DIR__)
-  @workflows ~w(specify design design-review impl impl-review research pr-review learn)
+  @subagents Path.expand("../../subagents", __DIR__)
+  @workflows ~w(specify design impl research pr-review learn)
 
   defp skill(name), do: File.read!(Path.join([@skills, name, "SKILL.md"]))
+  defp subagent(name), do: File.read!(Path.join(@subagents, name <> ".md"))
 
   defp owned(name) do
     [_, rest] = String.split(skill(name), "### Transitions this workflow owns\n", parts: 2)
@@ -59,11 +61,39 @@ defmodule Jarvis.WorkflowSkillsTest do
     end
   end
 
-  test "design-review and impl-review leave the board and the step unchanged" do
-    for name <- ~w(design-review impl-review) do
-      text = skill(name)
-      assert owned(name) =~ "None. This workflow is a read-only check"
-      refute text =~ ~s(`transition: "), "#{name} still moves the task"
+  test "the subagents leave files, the board, and the step unchanged" do
+    for name <- ~w(jarvis-scout jarvis-design-reviewer jarvis-impl-reviewer) do
+      text = subagent(name)
+      assert text =~ "read-only access", "#{name} is not read-only"
+      assert text =~ "nothing on the board", "#{name} may change the board"
+      refute text =~ ~s(`transition: "), "#{name} moves the task"
+    end
+  end
+
+  test "reviewers report an owner and a critical level, and the skills loop on them" do
+    assert subagent("jarvis-design-reviewer") =~ "**owner:**"
+    assert subagent("jarvis-design-reviewer") =~ "`critical`"
+    assert subagent("jarvis-impl-reviewer") =~ "### Critical"
+    assert subagent("jarvis-impl-reviewer") =~ "`[human]`"
+
+    for name <- ~w(design impl) do
+      assert skill(name) =~ "fresh `jarvis-", "#{name} does not repeat the review"
+      assert skill(name) =~ "`human`" or skill(name) =~ "`[human]`"
+    end
+  end
+
+  test "every subagent a skill names exists, and no skill names a removed workflow" do
+    defined = for f <- Path.wildcard(Path.join(@subagents, "*.md")), do: Path.basename(f, ".md")
+
+    named =
+      for name <- @workflows ++ ["poc"],
+          [_, agent] <- Regex.scan(~r/`(jarvis-[a-z-]+)` subagent/, skill(name)),
+          do: agent
+
+    assert Enum.sort(Enum.uniq(named)) == Enum.sort(defined)
+
+    for name <- @workflows ++ ["poc"], removed <- ~w(/design-review /impl-review) do
+      refute skill(name) =~ removed, "#{name} still names #{removed}"
     end
   end
 
@@ -109,8 +139,9 @@ defmodule Jarvis.WorkflowSkillsTest do
     assert named == later
   end
 
-  test "a pasted report a skill expects is one /impl-review still writes" do
-    headings = Regex.scan(~r/^(## .+)$/m, skill("impl-review")) |> Enum.map(&List.last/1)
+  test "a pasted report a skill expects is one jarvis-impl-reviewer still writes" do
+    headings =
+      Regex.scan(~r/^(## .+)$/m, subagent("jarvis-impl-reviewer")) |> Enum.map(&List.last/1)
 
     for name <- @workflows ++ ["poc"],
         [_, heading] <- Regex.scan(~r/starts with `(## [^`]+)`/, skill(name)) do
@@ -118,7 +149,7 @@ defmodule Jarvis.WorkflowSkillsTest do
                headings,
                &String.starts_with?(&1, String.replace(heading, ~r/ N\.M$/, ""))
              ),
-             "#{name} expects #{inspect(heading)}, which /impl-review no longer writes"
+             "#{name} expects #{inspect(heading)}, which jarvis-impl-reviewer no longer writes"
     end
   end
 end

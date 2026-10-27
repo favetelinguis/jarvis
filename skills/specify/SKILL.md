@@ -102,7 +102,7 @@ This step alone creates, reorders, redefines, or removes tasks and requirements.
 Read the project's own instructions and README for its purpose, then the project's board (`jarvis_read`) and the code and public interfaces of the areas the goal touches, so you ask only what they do not answer.
 
 - **New goal:** create it with `jarvis_goal_save`.
-- **A change to an existing goal, or a review report** (it starts with `## Review of Task N.M`, from /impl-review): read that goal with `jarvis_read`. Turn each Should-fix item into amended or new requirements on tasks still in Requirements, or new tasks, or drop it with my agreement. Blocking items are not yours: I send them back to /impl with "request changes".
+- **A change to an existing goal, or a review report** (it starts with `## Review of Task N.M`, from the `jarvis-impl-reviewer` subagent): read that goal with `jarvis_read`. Turn each Should-fix item into amended or new requirements on tasks still in Requirements, or new tasks, or drop it with my agreement. Blocking items are not yours: I send them back to /impl with "request changes".
 - **No input:** take the goal with tasks in Requirements. Revisit them against what the tasks in Done and the code now show: settle open (requirements) questions, and propose merges, splits, reorders, drops, and changed requirements. If no goal is open, ask me for one.
 
 ## 2. Elicit
@@ -127,7 +127,7 @@ Ask in plain chat, never through a harness's own question tool: these skills run
 
 - Keep the open decisions as a tree. Each round, ask the whole frontier: every decision whose prerequisites are settled, and none that depends on an answer still open. Recompute it after my answers.
 - Format each question as `❓ **Q1** - **<title>**: <body>`, then `➡️ <your recommended answer>` alone on the next line. Word it so "yes" accepts the recommendation; I answer by number ("1 yes, 2 no, because..."). Number on across rounds, so a number always means one question.
-- Facts are yours: read the board, the code, the README, and the docs before asking, and never ask what you can find out. Decisions are mine: never answer one yourself and never go on with a guess. When your harness has subagents, send one to look up a fact the board, code, or docs do not answer. Do not wait for it: ask the rest of the frontier now, and hold only the questions that depend on its answer.
+- Facts are yours: read the board, the code, the README, and the docs before asking, and never ask what you can find out. Decisions are mine: never answer one yourself and never go on with a guess. Send the `jarvis-scout` subagent to look up a fact the board, code, or docs do not answer. Do not wait for it: ask the rest of the frontier now, and hold only the questions that depend on its answer.
 - If I say an answer changes an earlier question, reopen that branch in the next round.
 - The interview is done when no open decision is left and nothing is silently assumed, not before. Then say what you understood in a few lines and wait for me to confirm we share it; do not act on it, write it down as settled, or move on until I do.
 - Challenge terms: when I use a term that conflicts with a Glossary entry or with what the code does, say so at once and ask which is right; when I am vague, propose one precise term; test a fuzzy boundary with a concrete edge-case scenario. When I state how something works, check the code and surface any contradiction.

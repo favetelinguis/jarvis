@@ -69,13 +69,52 @@ defmodule JarvisWeb.SettingsLiveTest do
       assert has_element?(view, "#integration-state-pi", "Not installed")
       assert has_element?(view, "#uninstall-pi[disabled]")
 
-      view |> element("#install-pi") |> render_click()
+      view |> form("#integration-form-pi") |> render_submit()
       assert has_element?(view, "#integration-state-pi", "Installed")
       assert has_element?(view, "#integration-activation-pi", "/reload")
       refute has_element?(view, "#uninstall-pi[disabled]")
 
       view |> element("#uninstall-pi") |> render_click()
       assert has_element?(view, "#integration-state-pi", "Not installed")
+    end
+
+    test "a model and effort set before Install reach the subagent, and a change updates it", %{
+      conn: conn
+    } do
+      {:ok, view, _} = live(conn, ~p"/settings")
+      _ = render_async(view)
+
+      for name <- ~w(jarvis-scout jarvis-design-reviewer jarvis-impl-reviewer) do
+        assert has_element?(view, "#subagent-model-codex-#{name}")
+        assert has_element?(view, "#subagent-effort-codex-#{name}")
+      end
+
+      set = fn model, effort ->
+        view
+        |> form("#integration-form-codex",
+          subagents: %{"jarvis-scout" => %{"model" => model, "effort" => effort}}
+        )
+        |> render_submit()
+      end
+
+      set.("gpt-5.4", "high")
+      assert has_element?(view, ~s(#subagent-model-codex-jarvis-scout[value="gpt-5.4"]))
+
+      assert has_element?(
+               view,
+               "#subagent-effort-codex-jarvis-scout option[value=high][selected]"
+             )
+
+      set.("gpt-5.5", "low")
+      assert has_element?(view, ~s(#subagent-model-codex-jarvis-scout[value="gpt-5.5"]))
+      assert has_element?(view, "#subagent-effort-codex-jarvis-scout option[value=low][selected]")
+      assert has_element?(view, "#integration-state-codex", "Installed")
+
+      set.("not a model", "low")
+      assert has_element?(view, "#integration-error-codex", "jarvis-scout")
+      assert has_element?(view, ~s(#subagent-model-codex-jarvis-scout[value="gpt-5.5"]))
+
+      view |> element("#uninstall-codex") |> render_click()
     end
   end
 end

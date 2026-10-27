@@ -72,7 +72,7 @@ Every sketch comment starts with `SKETCH:` in the language's comment syntax:
 - on a type: what it represents and the rules its values obey;
 - on a function or class: what it must do in the task's terms, the rules and edge cases, the errors it returns or raises and when, and its side effects.
 
-The `SKETCH:` comments are scaffolding. /impl turns what a caller needs into a short doc comment and deletes the rest, and /impl-review rejects any that remain. Do not mark task or requirement IDs in the code: the tasks live in Jarvis, outside the repository, and mean nothing to its readers.
+The `SKETCH:` comments are scaffolding. /impl turns what a caller needs into a short doc comment and deletes the rest, and the `jarvis-impl-reviewer` subagent rejects any that remain. Do not mark task or requirement IDs in the code: the tasks live in Jarvis, outside the repository, and mean nothing to its readers.
 
 Process:
 
@@ -91,7 +91,7 @@ Ask in plain chat, never through a harness's own question tool: these skills run
 
 - Keep the open decisions as a tree. Each round, ask the whole frontier: every decision whose prerequisites are settled, and none that depends on an answer still open. Recompute it after my answers.
 - Format each question as `❓ **Q1** - **<title>**: <body>`, then `➡️ <your recommended answer>` alone on the next line. Word it so "yes" accepts the recommendation; I answer by number ("1 yes, 2 no, because..."). Number on across rounds, so a number always means one question.
-- Facts are yours: read the board, the code, the README, and the docs before asking, and never ask what you can find out. Decisions are mine: never answer one yourself and never go on with a guess. When your harness has subagents, send one to look up a fact the board, code, or docs do not answer. Do not wait for it: ask the rest of the frontier now, and hold only the questions that depend on its answer.
+- Facts are yours: read the board, the code, the README, and the docs before asking, and never ask what you can find out. Decisions are mine: never answer one yourself and never go on with a guess. Send the `jarvis-scout` subagent to look up a fact the board, code, or docs do not answer. Do not wait for it: ask the rest of the frontier now, and hold only the questions that depend on its answer.
 - If I say an answer changes an earlier question, reopen that branch in the next round.
 - The interview is done when no open decision is left and nothing is silently assumed, not before. Then say what you understood in a few lines and wait for me to confirm we share it; do not act on it, write it down as settled, or move on until I do.
 - Challenge terms: when I use a term that conflicts with a Glossary entry or with what the code does, say so at once and ask which is right; when I am vague, propose one precise term; test a fuzzy boundary with a concrete edge-case scenario. When I state how something works, check the code and surface any contradiction.
@@ -111,11 +111,15 @@ Before you declare the task ready, confirm each item:
 - [ ] The task in Jarvis is claimed by this worktree, has current Sketch and Tests fields, and agrees with the sketch.
 - [ ] The project's check command passes, and pending tests leave the suite green; otherwise you said why.
 
-Then review the sketch in a fresh context before you hand it over:
+Then review the sketch in a fresh context, in a loop, before you hand it over:
 
-1. Start a reviewer with no memory of this work: a subagent where your harness has one, else a new session. Give it only the task's web view link, the sketch files, and the checklist above; it reads the board and the files itself.
-2. Write its report as one `findings` widget in the section Review, each finding with severity, path, line, and explanation. A review that finds nothing is an empty list, shown as no findings. Where your harness cannot start a fresh context, say so in a `callout` next to it.
-3. The review never moves the task. Fix what you agree with, or leave the finding for me.
-4. Hand Design over with `jarvis_task_save` `handoff: true` and `needs` naming what I should check. The board refuses the handoff without the review report.
+1. Start the `jarvis-design-reviewer` subagent, which has no memory of this work. Give it only the task's web view link, the sketch files, the checklist above, and the open items already with me; it reads the board and the files itself. It reports findings, each with a severity and an owner (`agent` or `human`); it fixes nothing.
+2. Read the report and act on it:
+   - A `critical` finding: stop the loop. Fix nothing else, not even the trivial findings, because the sketch may be redone. Hand over with the report so I decide.
+   - Fix every `agent` finding yourself, whatever its severity, then run the project's check command. Keep every `human` finding open for me; do not guess at it.
+3. Start a fresh `jarvis-design-reviewer` on the fixed sketch (a new subagent, never the same one) and repeat from 2. Stop when it reports no findings, when only `human` findings are left, when a `critical` finding appears, or after five rounds or when a round brings back a finding you already fixed (say so).
+4. Write the last report as one `findings` widget in the section Review: what is left, each finding with severity, path, line, and explanation. A review that finds nothing is an empty list, shown as no findings. Where the subagent cannot start, say so in a `callout` next to it.
+5. The review never moves the task.
+6. Hand Design over with `jarvis_task_save` `handoff: true` and `needs` naming what I should check, the open `human` findings and any `critical` one first. The board refuses the handoff without the review report.
 
 Leave the task in Design: "approve design" and "request design changes" are my buttons. Finish by stating that the task is ready for my decision, that /impl in this worktree follows my approval, and the decisions I should double check.

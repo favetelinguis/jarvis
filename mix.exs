@@ -55,7 +55,7 @@ defmodule Jarvis.MixProject do
     share = Path.join(release.path, "share")
     File.rm_rf!(share)
     File.mkdir_p!(share)
-    for dir <- ~w(agent pi skills), do: File.cp_r!(dir, Path.join(share, dir))
+    for dir <- ~w(agent pi skills subagents), do: File.cp_r!(dir, Path.join(share, dir))
 
     release
   end

@@ -8,7 +8,7 @@ disable-model-invocation: true
 Argument: "[Goal N, or what to build]"
 You are building a proof of concept. Input: the text the human typed after naming this workflow
 
-Normal workflow rules are suspended: do not wait for requirements to be confirmed, do not stop for /design or /impl-review, and do not ask me questions unless something is contradictory or impossible. I want to see the result, fast.
+Normal workflow rules are suspended: do not wait for requirements to be confirmed, do not stop for /design or the reviews, and do not ask me questions unless something is contradictory or impossible. I want to see the result, fast.
 
 ## Jarvis
 

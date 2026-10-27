@@ -225,7 +225,7 @@ defmodule Jarvis.IntegrationsTest do
     skill = Path.join(home, ".agents/skills/design/SKILL.md")
     Integrations.install(:codex)
     assert File.exists?(skill)
-    assert length(Path.wildcard(Path.join(home, ".agents/skills/*/SKILL.md"))) == 10
+    assert length(Path.wildcard(Path.join(home, ".agents/skills/*/SKILL.md"))) == 8
     refute File.read!(skill) |> String.contains?("$ARGUMENTS")
 
     assert %{state: :installed} = Integrations.install(:copilot)
@@ -261,5 +261,180 @@ defmodule Jarvis.IntegrationsTest do
     1..6 |> Task.async_stream(fn _ -> Integrations.install(:codex) end) |> Stream.run()
     text = File.read!(Path.join(home, ".codex/config.toml"))
     assert length(String.split(text, "[mcp_servers.jarvis]")) == 2
+  end
+
+  describe "subagents" do
+    test "each agent gets the subagents in its own format, with model and effort when set", %{
+      home: home
+    } do
+      for agent <- [:pi, :codex, :copilot], do: Integrations.install(agent)
+
+      pi = File.read!(Path.join(home, ".pi/agent/agents/jarvis-scout.md"))
+      assert pi =~ "name: jarvis-scout\n"
+      assert pi =~ "tools: read, grep, find, ls, mcp:jarvis/jarvis_read\n"
+      assert pi =~ "\nmodel: openrouter/openai/gpt-6-luna\n"
+      assert pi =~ "\nthinking: low\n"
+
+      codex = File.read!(Path.join(home, ".codex/agents/jarvis-design-reviewer.toml"))
+      assert codex =~ ~s(name = "jarvis-design-reviewer"\n)
+      assert codex =~ "developer_instructions = '''\n"
+      assert codex =~ ~s(\nmodel = "gpt-5.6-terra"\n)
+
+      for name <- ["jarvis-design-reviewer", "jarvis-impl-reviewer"] do
+        pi = File.read!(Path.join(home, ".pi/agent/agents/#{name}.md"))
+        assert pi =~ "\nmodel: openrouter/anthropic/claude-opus-5.5\n"
+        assert pi =~ "\nthinking: high\n"
+
+        copilot = File.read!(Path.join(home, ".copilot/agents/#{name}.agent.md"))
+        assert copilot =~ ~s(tools: ["read","search","execute","jarvis/jarvis_read"]\n)
+        assert copilot =~ "\nmodel: claude-opus-5.5\n"
+        assert copilot =~ "\nreasoning-effort: high\n"
+        assert copilot =~ "include-custom-instructions: true"
+      end
+    end
+
+    test "before Install each agent shows the defaults: a quick scout and stronger reviewers" do
+      expected = %{
+        pi: {"openrouter/openai/gpt-6-luna", "openrouter/anthropic/claude-opus-5.5"},
+        codex: {"gpt-5.6-luna", "gpt-5.6-terra"},
+        copilot: {"gpt-6-luna", "claude-opus-5.5"}
+      }
+
+      for {agent, {scout, reviewer}} <- expected do
+        assert %{state: :not_installed, subagents: rows} = Integrations.status(agent)
+        by_name = Map.new(rows, &{&1.name, &1})
+        assert %{model: ^scout, effort: "low"} = by_name["jarvis-scout"]
+        assert %{model: ^reviewer, effort: "high"} = by_name["jarvis-design-reviewer"]
+        assert %{model: ^reviewer, effort: "high"} = by_name["jarvis-impl-reviewer"]
+      end
+    end
+
+    test "install writes the chosen model and effort under each harness's own field names", %{
+      home: home
+    } do
+      pick = %{"jarvis-scout" => %{"model" => "openai/gpt-6:high", "effort" => "low"}}
+
+      Integrations.install(:pi, pick)
+      Integrations.install(:codex, pick)
+      Integrations.install(:copilot, pick)
+
+      pi = File.read!(Path.join(home, ".pi/agent/agents/jarvis-scout.md"))
+      assert pi =~ "\nmodel: openai/gpt-6:high\n"
+      assert pi =~ "\nthinking: low\n"
+
+      codex = File.read!(Path.join(home, ".codex/agents/jarvis-scout.toml"))
+      assert codex =~ ~s(\nmodel = "openai/gpt-6:high"\n)
+      assert codex =~ ~s(\nmodel_reasoning_effort = "low"\n)
+
+      copilot = File.read!(Path.join(home, ".copilot/agents/jarvis-scout.agent.md"))
+      assert copilot =~ "\nmodel: openai/gpt-6:high\n"
+      assert copilot =~ "\nreasoning-effort: low\n"
+
+      # The others keep their defaults.
+      assert File.read!(Path.join(home, ".pi/agent/agents/jarvis-impl-reviewer.md")) =~
+               "\nmodel: openrouter/anthropic/claude-opus-5.5\n"
+    end
+
+    test "installing again with a new value updates the file and keeps the other values", %{
+      home: home
+    } do
+      file = Path.join(home, ".codex/agents/jarvis-scout.toml")
+      other = Path.join(home, ".codex/agents/jarvis-impl-reviewer.toml")
+      Integrations.install(:codex, %{"jarvis-scout" => %{"model" => "a", "effort" => "high"}})
+      Integrations.install(:codex, %{"jarvis-impl-reviewer" => %{"effort" => "xhigh"}})
+
+      assert %{state: :installed} =
+               Integrations.install(:codex, %{"jarvis-scout" => %{"model" => "b"}})
+
+      assert File.read!(file) =~ ~s(model = "b")
+      assert File.read!(file) =~ ~s(model_reasoning_effort = "high")
+      assert File.read!(other) =~ ~s(model_reasoning_effort = "xhigh")
+
+      assert %{subagents: rows} = Integrations.status(:codex)
+      assert %{model: "b", effort: "high"} = Enum.find(rows, &(&1.name == "jarvis-scout"))
+
+      Integrations.install(:codex, %{"jarvis-scout" => %{"model" => "", "effort" => ""}})
+      refute File.read!(file) =~ "model"
+    end
+
+    test "reinstall preserves chosen reviewer models for pi and Copilot" do
+      for agent <- [:pi, :copilot] do
+        chosen = %{"jarvis-design-reviewer" => %{"model" => "custom-model", "effort" => "low"}}
+        assert %{state: :installed} = Integrations.install(agent, chosen)
+        assert %{state: :installed, subagents: rows} = Integrations.install(agent)
+
+        assert %{model: "custom-model", effort: "low"} =
+                 Enum.find(rows, &(&1.name == "jarvis-design-reviewer"))
+      end
+    end
+
+    test "an invalid model or effort is refused and nothing is written", %{home: home} do
+      for given <- [
+            %{"model" => "x\nname: evil"},
+            %{"model" => ~s(a"b)},
+            %{"effort" => "max"}
+          ] do
+        assert %{error: error} = Integrations.install(:copilot, %{"jarvis-scout" => given})
+        assert error =~ "jarvis-scout"
+      end
+
+      refute File.exists?(Path.join(home, ".copilot/agents"))
+    end
+
+    test "a subagent file that differs from its definition shows as partly installed", %{
+      home: home
+    } do
+      Integrations.install(:pi)
+      assert %{state: :installed} = Integrations.status(:pi)
+
+      file = Path.join(home, ".pi/agent/agents/jarvis-scout.md")
+      File.write!(file, File.read!(file) <> "edited\n")
+      assert %{state: :partial} = Integrations.status(:pi)
+      assert %{state: :installed} = Integrations.install(:pi)
+
+      File.rm!(file)
+      assert %{state: :partial} = Integrations.status(:pi)
+    end
+
+    test "uninstall removes the subagents and leaves other agents' files alone", %{home: home} do
+      mine = Path.join(home, ".pi/agent/agents/own.md")
+      File.mkdir_p!(Path.dirname(mine))
+      File.write!(mine, "mine")
+
+      Integrations.install(:pi)
+      Integrations.uninstall(:pi)
+
+      assert File.read!(mine) == "mine"
+      assert Path.wildcard(Path.join(home, ".pi/agent/agents/jarvis-*")) == []
+    end
+
+    test "install and uninstall remove the skills the subagents replaced", %{home: home} do
+      Integrations.install(:pi)
+
+      for name <- ~w(design-review impl-review) do
+        dir = Path.join(home, ".agents/skills/#{name}")
+        File.mkdir_p!(dir)
+        File.write!(Path.join(dir, "SKILL.md"), "old")
+        File.write!(Path.join(dir, ".jarvis-managed"), "")
+      end
+
+      own = Path.join(home, ".agents/skills/impl-review")
+      assert %{state: :partial} = Integrations.status(:pi)
+      assert %{state: :installed} = Integrations.install(:pi)
+      refute File.exists?(own)
+
+      File.mkdir_p!(own)
+      File.write!(Path.join(own, "SKILL.md"), "mine")
+      assert %{state: :installed} = Integrations.status(:pi)
+      Integrations.uninstall(:pi)
+      assert File.read!(Path.join(own, "SKILL.md")) == "mine"
+    end
+
+    test "no definition can end the TOML instructions early" do
+      for d <- Jarvis.Integrations.Subagents.definitions(Path.expand("../..", __DIR__)) do
+        refute d.instructions =~ "'''"
+        refute d.description =~ ": "
+      end
+    end
   end
 end

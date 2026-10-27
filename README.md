@@ -55,9 +55,12 @@ On the **Settings** page, the **Integrations** section has one row per agent: wh
 | pi | An explicit extension selection from the package `pi/` in `~/.pi/agent/settings.json`: registers the shared MCP tools, reports presence, and supplies next-turn comments |
 | Codex | In `~/.codex/config.toml`, marked `# >>> jarvis` blocks: the board tools as an MCP server (`agent/jarvis-mcp.mjs`) and hooks for presence and comment delivery (`agent/jarvis-hook.mjs`). Also removes the old session-mirror hook |
 | Copilot CLI | `mcpServers.jarvis` in `~/.copilot/mcp-config.json`, and presence/comment hooks in `~/.copilot/settings.json` |
-| all three | The ten workflow skills in `skills/` copied to `~/.agents/skills/`, one copy for all agents |
+| all three | The eight workflow skills in `skills/` copied to `~/.agents/skills/`, one copy for all agents |
+| all three | Three custom subagents from `subagents/`, one file each: `jarvis-scout` (looks up a fact), `jarvis-design-reviewer`, and `jarvis-impl-reviewer` (fresh-context reviews). pi: `~/.pi/agent/agents/*.md`; Codex: `~/.codex/agents/*.toml`; Copilot CLI: `~/.copilot/agents/*.agent.md` |
 
-All three agents need `node` for the shared MCP server (and the Codex/Copilot hooks). If the server is not at `http://localhost:4000`, it records the URL the panel was opened on. Re-click Install to bring the skills up to date after changing them in this repository. Codex may ask you to trust the new hooks.
+All three agents need `node` for the shared MCP server (and the Codex/Copilot hooks). If the server is not at `http://localhost:4000`, it records the URL the panel was opened on. Re-click Install to bring the skills and subagents up to date after changing them in this repository. Codex may ask you to trust the new hooks.
+
+Each agent's row also has a **model** and an **effort** field per subagent. Install writes them into the subagent file (`model` and `thinking` for pi, `model` and `model_reasoning_effort` for Codex, `model` and `reasoning-effort` for Copilot CLI); change a value and choose Install again to update the file. The fields start with defaults: a quick scout (`gpt-6-luna`, low effort) and reviewers using Claude Opus 5.5 at high effort for pi and Copilot CLI (Codex uses `gpt-5.6-luna` and `gpt-5.6-terra`). An empty field leaves the setting out, so the subagent uses the session's. The values are read back from the installed files, so Uninstall forgets them. The workflows start the subagents by name; the old `design-review` and `impl-review` skills are now `jarvis-design-reviewer` and `jarvis-impl-reviewer`, and Install removes their old copies. In pi the subagents need the `pi-subagents` extension, and they reach the board through the Jarvis MCP server, so run them in the background (its default).
 
 Codex and Copilot CLI sessions show on the board, and they receive your comments at the start of their next turn. They are never woken while idle.
 
