@@ -201,7 +201,19 @@ defmodule JarvisWeb.DecisionsLiveTest do
       entry = "#report-#{report.id}-entry-0"
 
       assert has_element?(view, "#report-#{report.id}[data-read=false]")
-      assert has_element?(view, "#{entry} [data-role=before]", "before")
+
+      assert has_element?(
+               view,
+               "#report-#{report.id} details:not([open]) > summary",
+               "Turn report"
+             )
+
+      assert has_element?(
+               view,
+               "#report-#{report.id} details #{entry} [data-role=before]",
+               "before"
+             )
+
       assert has_element?(view, "#{entry} [data-role=after]", "after")
       assert has_element?(view, "#{entry} [data-role=reason]", "Q3 → intent sharpened")
       assert has_element?(view, "#report-#{report.id}-needs", "confirm R1")
@@ -273,7 +285,14 @@ defmodule JarvisWeb.DecisionsLiveTest do
       {:ok, _} = Planning.create_task(scope, goal, %{"title" => "Split off"})
       Jarvis.Workspaces.set_state(scope, :idle)
       {:ok, view, _} = live(conn, ~p"/projects/#{scope.project}/goals/#{goal.number}")
-      assert has_element?(view, "#turn-reports [data-action=task_created]", "Split off")
+
+      assert has_element?(
+               view,
+               "#turn-reports article details:not([open]) > summary",
+               "Turn report"
+             )
+
+      assert has_element?(view, "#turn-reports details [data-action=task_created]", "Split off")
     end
 
     test "the Guide explains turn reports", %{conn: conn} do

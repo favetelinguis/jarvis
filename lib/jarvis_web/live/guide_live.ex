@@ -367,7 +367,7 @@ defmodule JarvisWeb.GuideLive do
         <section id="turn-reports" class="scroll-mt-20">
           <h2 class="text-lg font-semibold">Turn reports</h2>
           <div class="mt-1 text-sm text-base-content/70">
-            <.markdown text="When an agent turn ends after it changed the board, the task page shows a turn report at the top. It lists each widget the turn added, changed, or removed, with its content before and after. For lists it names the items added, removed, or changed. Each change shows the agent's reason, or *No reason given*. The report ends with what the agent needs from you. The widgets it changed are marked. Press **Mark turn as read** to move the report to the history **Turns**. A goal page shows reports of changes to the goal and the tasks created in it. Changes to code files never appear; git shows them." />
+            <.markdown text="After a turn changes the board, a collapsed turn report appears at the top of the task page. Open it to see each widget the turn added, changed, or removed, with its content before and after. For lists it names the items added, removed, or changed. Each change shows the agent's reason, or *No reason given*. The report ends with what the agent needs from you. The widgets it changed are marked. Press **Mark turn as read** to move the report to the history **Turns**. A goal page shows reports of changes to the goal and the tasks created in it. Changes to code files never appear; git shows them." />
           </div>
         </section>
         <section id="evidence" class="scroll-mt-20">

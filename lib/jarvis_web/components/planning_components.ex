@@ -7,6 +7,7 @@ defmodule JarvisWeb.PlanningComponents do
 
   alias Jarvis.Planning.{Catalog, Report, TaskType}
   alias Jarvis.Workspaces.{AgentSession, Worktree}
+  alias Phoenix.LiveView.JS
 
   attr :form, :atom, required: true
   attr :id, :string, default: nil
@@ -416,39 +417,44 @@ defmodule JarvisWeb.PlanningComponents do
         if(@read, do: "border border-base-300", else: "border-2 border-base-content/70 shadow-sm")
       ]}
     >
-      <header class="flex flex-wrap items-center gap-2">
-        <h2 class="text-sm font-semibold">
-          {if @read, do: "Turn", else: "Turn report"} by {agent_label(@report)}
-        </h2>
-        <span class="text-xs text-base-content/70"><.time_ago at={@report.updated_at} now={@now} /></span>
+      <details id={"report-#{@report.id}-details"} phx-mounted={JS.ignore_attributes("open")}>
+        <summary class="cursor-pointer select-none text-sm">
+          <h2 class="inline font-semibold">
+            {if @read, do: "Turn", else: "Turn report"} by {agent_label(@report)}
+          </h2>
+          <span class="text-xs text-base-content/70"><.time_ago
+            at={@report.updated_at}
+            now={@now}
+          /></span>
+        </summary>
         <button
           :if={!@read}
           id={"read-report-#{@report.id}"}
           type="button"
           phx-click="read_report"
           phx-value-report={@report.id}
-          class="ml-auto rounded-lg bg-base-content px-3 py-1.5 text-sm font-medium text-base-100 transition hover:opacity-85"
+          class="mt-3 rounded-lg bg-base-content px-3 py-1.5 text-sm font-medium text-base-100 transition hover:opacity-85"
         >
           Mark turn as read
         </button>
-      </header>
-      <p
-        :if={@report.needs}
-        id={"report-#{@report.id}-needs"}
-        class="mt-2 rounded-lg bg-warning/30 px-3 py-2 text-sm"
-      >
-        <strong>The agent needs from you:</strong> {@report.needs}
-      </p>
-      <ol class="mt-3 space-y-3">
-        <li
-          :for={{e, i} <- Enum.with_index(Report.items(@report))}
-          id={"report-#{@report.id}-entry-#{i}"}
-          data-action={e["action"]}
-          class="rounded-xl bg-base-200/50 p-3 text-sm"
+        <p
+          :if={@report.needs}
+          id={"report-#{@report.id}-needs"}
+          class="mt-2 rounded-lg bg-warning/30 px-3 py-2 text-sm"
         >
-          <.report_entry e={e} type={@type} path={@path} hidden_sections={@hidden_sections} />
-        </li>
-      </ol>
+          <strong>The agent needs from you:</strong> {@report.needs}
+        </p>
+        <ol class="mt-3 space-y-3">
+          <li
+            :for={{e, i} <- Enum.with_index(Report.items(@report))}
+            id={"report-#{@report.id}-entry-#{i}"}
+            data-action={e["action"]}
+            class="rounded-xl bg-base-200/50 p-3 text-sm"
+          >
+            <.report_entry e={e} type={@type} path={@path} hidden_sections={@hidden_sections} />
+          </li>
+        </ol>
+      </details>
     </article>
     """
   end
